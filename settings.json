@@ -1,0 +1,21 @@
+{
+    "server_port":  8090,
+    "upstream_host":  "127.0.0.1",
+    "upstream_port":  8080,
+    "data_file":  "data.json",
+    "llama_swap_exe":  "F:\\app-dev\\tools\\llama-swap\\llama-swap.exe",
+    "llama_swap_config":  "F:\\app-dev\\tools\\llama-swap\\config.yaml",
+    "mcp_auto_tools":  true,
+    "mcp_servers":  [
+                        {
+                            "command":  [
+                                            "{python}",
+                                            "-u",
+                                            "{project}\\src\\mcp_commander.py"
+                                        ],
+                            "name":  "atlas-commander",
+                            "cwd":  "{project}",
+                            "enabled":  true
+                        }
+                    ]
+}

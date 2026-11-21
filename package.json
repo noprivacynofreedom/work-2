@@ -1,0 +1,12 @@
+{
+  "name": "atlas-chat",
+  "private": true,
+  "version": "0.3.1",
+  "description": "Atlas Chat desktop workbench with opt-in Odysseus-inspired modules (Compare, Deep Research, Model Cookbook, Docs Canvas, Scheduler, Skills Registry, External MCP Packs)",
+  "scripts": {
+    "dev": "ATLAS_BIND_HOST=0.0.0.0 ATLAS_PORT=3000 ATLAS_DATA_DIR=/tmp/atlas-preview-data ATLAS_PREVIEW_ALLOW_REMOTE_UI=1 python3 atlas-rust-desktop/src-tauri/resources/atlas/server.py",
+    "build": "python3 check-bundle.py",
+    "lint": "python3 -m py_compile atlas-rust-desktop/src-tauri/resources/atlas/optional_modules.py atlas-rust-desktop/src-tauri/resources/atlas/compare_mode.py atlas-rust-desktop/src-tauri/resources/atlas/deep_research.py atlas-rust-desktop/src-tauri/resources/atlas/cookbook.py atlas-rust-desktop/src-tauri/resources/atlas/docs_canvas.py atlas-rust-desktop/src-tauri/resources/atlas/task_scheduler.py atlas-rust-desktop/src-tauri/resources/atlas/skills_registry.py atlas-rust-desktop/src-tauri/resources/atlas/external_packs.py atlas-rust-desktop/src-tauri/resources/atlas/src/mcp_productivity.py atlas-rust-desktop/src-tauri/resources/atlas/src/mcp_media_drawer.py atlas-rust-desktop/src-tauri/resources/atlas/server.py && python3 -m unittest atlas-rust-desktop/validation-tests/test_optional_modules_and_compare.py atlas-rust-desktop/validation-tests/test_deep_research_and_cookbook.py atlas-rust-desktop/validation-tests/test_phase2_and_phase3_modules.py atlas-rust-desktop/validation-tests/test_page_never_scrolls.py && node atlas-rust-desktop/validation-tests/test_ui_a11y.js",
+    "start": "ATLAS_BIND_HOST=0.0.0.0 ATLAS_PORT=3000 ATLAS_DATA_DIR=/tmp/atlas-preview-data ATLAS_PREVIEW_ALLOW_REMOTE_UI=1 python3 atlas-rust-desktop/src-tauri/resources/atlas/server.py"
+  }
+}

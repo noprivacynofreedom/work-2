@@ -1,0 +1,1326 @@
+INTEGRATED DOCUMENTS (plain text snapshot)
+============================================
+
+Made 2026-11-12. A single readable copy of the documents that belong to the integrated set:
+the hub documents and what they cite. Each part is the original file, word for word.
+This is a SNAPSHOT. The originals stay in the repository and stay the live copies.
+Do not delete CLAUDE.md, HANDOFF.md, README.md or docs/atlas-node/GATEWAY-CONTRACT.md:
+the project rules, or a test, read them.
+
+CONTENTS
+--------
+ 1. README.md : Project readme
+ 2. CLAUDE.md : Rules for every Claude session
+ 3. HANDOFF.md : Handoff and standing rules
+ 4. HANDOFF-NEXT.md : Handoff: next steps (10 Nov)
+ 5. ATLAS-ROADMAP-AND-RELEASE-GATES.md : Roadmap and release gates
+ 6. docs/PROJECT-MASTER.md : Project master document
+ 7. docs/DEVLOG.md : Development log
+ 8. docs/EVIDENCE-REGISTER.md : Evidence register
+ 9. docs/investors/INVESTOR-PITCH-NOTES.md : Investor pitch notes
+10. docs/atlas-node/GATEWAY-CONTRACT.md : Atlas Node gateway contract (a test reads this file)
+11. bench-results.md : Model benchmark results
+
+
+==============================================================================
+PART 1: README.md
+Project readme. Last changed 2026-11-09.
+==============================================================================
+
+# Atlas Chat
+
+**Local-first AI desktop application evolving toward a hybrid AI platform.**
+
+> Project status: active development / pre-release. Feature maturity and deployment status vary by subsystem. See the internal project master document and evidence register before treating any capability as production-ready.
+
+## Vision
+
+Atlas aims to make capable AI systems more accessible beyond centralized datacentres by combining local model inference, tool use, agent orchestration, observability and an extensible ecosystem. The desktop application is the user-facing foundation; the longer-term direction includes optional distributed compute and commercial services.
+
+## Product direction
+
+- Local-first desktop experience and model access.
+- Hybrid operation: local models with optional remote services where explicitly enabled.
+- Multi-agent orchestration, task execution and operational visibility.
+- Model Context Protocol (MCP) integrations and extensible tools.
+- Developer workflows, knowledge features and persistent conversations.
+- A future ecosystem for nodes, contributors, integrations and commercial services.
+
+## Architecture (documented design)
+
+- **Frontend:** React, TypeScript, Vite.
+- **Desktop shell:** Tauri and Rust.
+- **Compatibility/backend layer:** existing Python chat server and services.
+- **AI runtime:** llama-swap and local model endpoints.
+- **Agent/platform components:** Atlas Node, Operations, MCP, Dev Engine and a Rust control-plane workstream.
+
+The existing Python-served chat experience is to be preserved and integrated with the desktop shell rather than casually replaced. Atlas Desktop and Atlas Online are separate product surfaces and should remain architecturally distinct.
+
+## Local development environment
+
+Historical project root recorded in development handoffs:
+
+`F:\\APP-DEV\\projects\\atlas-chat`
+
+Desktop application:
+
+`F:\\APP-DEV\\projects\\atlas-chat\\atlas-rust-desktop`
+
+Previously recorded local endpoints (verify against current configuration):
+
+| Service | Endpoint |
+|---|---|
+| Python API | `127.0.0.1:8090` |
+| llama-swap | `127.0.0.1:8080` |
+| llama-server | port `5801` |
+
+Previously recorded model aliases: `assist`, `coder`, `mentor`, `mentor-dense`, `tasks`.
+
+These are historical environment notes, not universal defaults. Consult local configuration before launching services.
+
+## Development principles
+
+1. Inspect the current implementation and dependencies before changing code.
+2. Plan the complete feature and identify affected components.
+3. Integrate related changes coherently rather than stacking disconnected patches.
+4. Preserve user data, settings, chat history, model files and Git metadata.
+5. Test the changed subsystem, then run regression/integration tests and production build checks.
+6. End with end-to-end runtime validation on the target machine.
+7. Report source-complete, test-passing, build-passing and runtime-verified as separate states.
+8. Keep rollback paths and record exact release artifacts and hashes.
+9. Track only processes Atlas owns; never terminate unrelated user processes.
+10. Keep security-sensitive actions scoped, approved and auditable.
+
+## Current known workstreams
+
+- Desktop shell, launcher, installer and in-place upgrade lifecycle.
+- Chat reliability, conversation queue and conversation navigation.
+- MCP tool loop, approval and audit behaviour.
+- Atlas Node and control-plane foundations.
+- Operations dashboard and agent observability.
+- Local Dev Engine and sandboxed patch workflow.
+- Knowledge Library and conversation import.
+- UI polish, bot avatars and usability improvements.
+
+See `docs/PROJECT-MASTER.md`, `docs/DEVLOG.md` and `docs/EVIDENCE-REGISTER.md` for status and caveats.
+
+## Build and release
+
+Build instructions have changed across iterations. Use the current checked-in build scripts and the latest Windows build handoff rather than assuming old commands remain valid. A successful frontend build alone does not mean the Rust desktop application or installer is release-ready.
+
+## Security and privacy
+
+Atlas is designed around local-first operation and explicit control over remote execution. Do not describe the product as fully offline, fully private, secure-by-default or production-hardened without validating the exact configuration and threat model. Remote workload participation and privileged actions require explicit consent and scoped authorization.
+
+## Project status
+
+Atlas is an active engineering project. Some subsystems have staged implementations and automated test evidence; target-Windows runtime acceptance remains necessary for several features. The conversation queue and open-conversation cancellation/navigation issues reported on 8 November 2026 remain active blockers until reproduced and verified fixed.
+
+## Documentation
+
+- `docs/PROJECT-MASTER.md` — founder-facing project direction, architecture, status and roadmap.
+- `docs/DEVLOG.md` — dated development history and iteration ledger.
+- `docs/EVIDENCE-REGISTER.md` — what is proven, what is only staged, and what still needs evidence.
+- `docs/investors/INVESTOR-PITCH-NOTES.md` — fundraising narrative and evidence gaps.
+- `docs/investors/Atlas-Chat-Investor-Pitch.pptx` — editable first-draft pitch deck.
+
+## Versioning policy
+
+Use semantic versioning for public releases once a stable release process is adopted. Do not equate patch ZIP labels, internal workstream versions, desktop build-sequence versions and public product versions. Record each separately in the devlog and release manifest.
+
+
+## Repository roadmap
+
+The existing [`ATLAS-ROADMAP-AND-RELEASE-GATES.md`](ATLAS-ROADMAP-AND-RELEASE-GATES.md) remains the canonical detailed roadmap and release-gate record. It is intentionally preserved rather than overwritten.
+
+The founder-facing project overview in [`docs/PROJECT-MASTER.md`](docs/PROJECT-MASTER.md) reconciles that roadmap with the wider product direction and links the historical evidence.
+
+
+==============================================================================
+PART 2: CLAUDE.md
+Rules for every Claude session. Last changed 2026-11-11.
+==============================================================================
+
+# Atlas Chat: rules for every Claude session
+
+Read this before any work. It exists because of a real mistake (2026-11-10, see the end).
+
+## 1. Which app is the real one
+- The real app is the **desktop app**: `atlas-rust-desktop/` (Tauri + Rust shell, React frame).
+- The backend and chat UI that **ship in the installer** are in
+  `atlas-rust-desktop/src-tauri/resources/atlas/` (`server.py`, `index.html`, `books.py`, ...).
+  **Change these files.** The files with the same names in the repo root are older copies.
+- Jason builds with `.\build-release.ps1`, then runs the installer that the build prints.
+  He starts the app from the Start menu ("Atlas Chat"). He does NOT start it with `python app.py`.
+- A branch that has no `atlas-rust-desktop/src-tauri/tauri.conf.json` is an OLD version of Atlas.
+  `main` is one of them (as of 2026-11-10). Never build on it. Never send Jason to it.
+
+## 2. Before you write any code
+1. `git fetch origin`, then list branches by date:
+   `git for-each-ref --sort=-committerdate --format="%(committerdate:short) %(refname:short)" refs/remotes`
+2. Find the newest branch that holds the desktop app. Build on that one.
+   If Jason names another branch or file, check it against step 1 and tell him when it is older.
+3. A `HANDOFF.md` only describes its own branch. Old branches hold old handoffs. Check the date and the branch.
+4. If you are unsure which branch Jason runs, ask him for the output of `git status -sb`. Ask first.
+
+## 3. How to give Jason your work
+- Build on top of his app branch, so that his branch can fast-forward to yours.
+- Then he runs ONE command in `F:\APP-DEV\projects\atlas-chat`:
+  `python get_update.py <your branch>`
+  It checks first, refuses old branches, never switches branch, and prints the next steps.
+- **Never tell Jason to run `git checkout <branch>`, `git switch`, `git reset` or `git pull` on another branch.**
+- Never push to `main` or to his app branch without his clear yes.
+
+## 4. How to write to Jason
+- Checks and warnings come FIRST, before the steps. Never after.
+- First line: one action. Numbered steps. One action per step. Short common words.
+- Say plainly what is tested and what is not. "Tests pass in the cloud" is not "works on the PC".
+- Do not say "you are missing nothing" unless you compared his branch with every remote branch.
+
+## 5. Tests
+- Backend (run in `atlas-rust-desktop/src-tauri/resources/atlas`):
+  `python -m unittest discover -s ../../../validation-tests -p "test_*.py"`
+- Repo root: `python -m unittest discover tests`
+- Bundle check (also run by the build): `python check-bundle.py`
+- Known before 2026-11-10: `validation-tests/test_knowledge_library.py` fails at import (stale stub),
+  and `tests/test_conversation_api.py` has 1 error in the cloud. Do not count these as your breakage, do not hide them.
+
+## 6. Standing rules (from HANDOFF.md)
+- Never send emails. Never delete files outside atlas-chat. Client installs use normal (non-abliterated) models.
+- Accessibility: keyboard access, visible focus, reduced motion, works at phone width.
+- Jason's data (chats, bots, library) lives outside git. Never reset or overwrite it.
+
+## 7. Install folders on Jason's PC (checked 2026-11-11)
+- **Live install:** `F:\APP-DEV\projects\atlas-chat\app`. The Start menu shortcut "Atlas Chat" points to `app\atlas-desktop.exe`.
+  The installer defaults to it (`nsis/f-drive-only.nsh`). No F: drive: `%LOCALAPPDATA%\atlas-chat\app`.
+- **Old install (before 2026-11-10):** `F:\APP-DEV\projects\atlas-chat\Atlas Chat`. Do not use it. Do not edit it.
+  Jason renames it to `Atlas Chat.old` and deletes it later. Never tell him to run its `uninstall.exe`:
+  both installs share one app ID, so it may remove the shortcut and registry entry of the live install.
+- The install folder is a **copy** of `src-tauri/resources/atlas` plus `atlas-desktop.exe`. Never edit files inside it.
+  The build overwrites it. Edit the source in `atlas-rust-desktop/`.
+- Data is outside the install: `F:\APP-DEV\data\Atlas Chat`. Folders `data`, `bots`, `exports`, `logs`, `runtime`,
+  `swarm-workspaces`, `swpr`, `swr-user testing`, `vnc-workspace` in the project folder are Jason's work. Never delete them.
+- Safe to delete (the build recreates them): `atlas-rust-desktop/node_modules`, `dist`, `src-tauri/target`, `__pycache__`.
+
+## What went wrong on 2026-11-10
+Jason pointed a cloud session at `HANDOFF.md` on `claude/intelligent-bohr-9laqiq`. That branch came from the old
+Python app. The session built book import there without looking at the other branches, then told Jason to
+`git checkout` its branch and said he was missing nothing. His project folder switched to the old app.
+`git checkout -` put it back. Book import was then rebuilt inside the desktop app. Sections 1-4 prevent a repeat.
+
+
+==============================================================================
+PART 3: HANDOFF.md
+Handoff and standing rules. Last changed 2026-11-10.
+==============================================================================
+
+# Atlas Chat + local models: handoff notes (updated 2026-11-10, cloud session)
+
+Read this first. Update it as you work: what you changed, what worked, what failed.
+
+## Layout
+- Models: F:\models (qwen3.6-35b-a3b-abl, gemma4-31b-heretic, gemma4-26b-a4b-abl, qwen3-14b-abl, gpt-oss-20b-abl). All complete.
+- llama.cpp Vulkan b12125: F:\app-dev\tools\llama-vulkan
+- llama-swap v270: F:\app-dev\tools\llama-swap (config.yaml, port 8080). Backup of the old config: config.yaml.bak-20261106
+  Model names: coder (alias agent), mentor (aliases guide, teach, mentor-moe), mentor-dense (old Gemma 31B), assist, tasks.
+- Atlas Chat: F:\app-dev\projects\atlas-chat (git repo, branch main, never pushed)
+  - app.py = native window (pywebview + WebView2). Starts llama-swap and server if ports are down. Reads paths/ports from settings.json.
+  - server.py = serves index.html, saves bots/chats (/api/state) to %APPDATA%\AtlasChat\data.json with backups,
+    POST /api/export writes a backup, /api/tool runs file tools, /api/folder checks a folder, /api/info gives paths,
+    proxies /v1/* to 8080, adds document snippets when a request carries docs_folder.
+  - filetools.py = list_files / read_file / write_file for models, locked to the bot's workspace folder.
+  - settings.json = ports and paths. settings.local.json (not in git) overrides it on one PC.
+    Missing file, bad JSON or wrong types fall back to defaults in server.py.
+  - docsearch.py = keyword search over a bot's documents folder (top 3 snippets, text + .docx + .pdf). Test set: sample-docs\
+  - install.ps1 was removed (2026-11-10). The Tauri NSIS installer is used.
+  - tests\ = test_atlas.py (python -m unittest discover tests), mock_llama.py (fake model server), ui-test.js (browser test).
+  - index.html = UI: bot cards, chats per bot, editor (Ctrl+E, now has Documents folder), streaming, Stop, Export/Import.
+  - test-models.ps1 = smoke test. Run: & 'F:\app-dev\projects\atlas-chat\test-models.ps1' -Models coder,mentor,assist,tasks
+  - Desktop shortcut "Atlas Chat" -> C:\Users\zezu1\AppData\Local\Python\pythoncore-3.14-64\pythonw.exe app.py
+- Hardware: RX 9070 XT 16 GB VRAM, 31 GB RAM. Desktop apps hold about 3.9 GB dedicated VRAM right now (was 1.5-2 GB).
+
+## Test results (latest, 2026-11-06, test-models.ps1 through 8090)
+| Model | Result | Speed | Settings |
+|---|---|---|---|
+| coder (Qwen3.6 35B-A3B Q4_K) | OK | 39.7-41.6 tok/s (was 5.3) | -ngl 99 --n-cpu-moe 28 --load-mode none |
+| mentor (Gemma 4 26B-A4B abliterated i1-Q4_K_M) | OK, good advisor answer | 45-47.5 tok/s (old dense mentor 5.2) | -ngl 99 --n-cpu-moe 14 |
+| assist (Qwen3 14B) | OK | 54.6 tok/s | unchanged (--fit-target 2048) |
+| tasks (gpt-oss 20B) | OK | 111-115 tok/s (had dropped to 35) | -ngl 99 --n-cpu-moe 2, --fit-target removed |
+
+Tuning runs:
+- coder --n-cpu-moe: 20=11.3, 22=8.8, 24=37.5, 26=40.2, 28=41.6, 30=36.5 tok/s.
+- mentor --n-cpu-moe: 8=17.7 (spills), 12=51.4, 14=47.5. 14 chosen for about 1 GB more VRAM headroom.
+- tasks: --fit-target 2048 = 35, --n-cpu-moe 4 = 92.6, 2 = 111-115, 0 = 34 (0 acts like unset, fit runs).
+- Mentor quality test (blunt advisor, NZ dropshipping question, 1317 tokens in 29.9 s): clear decision, reasons, risks, one next action.
+
+## Done
+- 2026-11-06 Coder re-tested and tuned: --n-cpu-moe 28, 41.6 tok/s. Config comment has the full table.
+- 2026-11-06 Mentor moved to MoE: downloaded mradermacher/Huihui-gemma-4-26B-A4B-it-abliterated-i1-GGUF
+  file Huihui-gemma-4-26B-A4B-it-abliterated.i1-Q4_K_M.gguf (16,796,011,968 bytes, sha256 0f9077c9c7b40f1b056b89a48422017717190618e3136d2d3c20c758e3603676, matches HF)
+  into F:\models\gemma4-26b-a4b-abl. "mentor" now points at it (45-51 tok/s). Old file kept as "mentor-dense".
+- 2026-11-06 tasks fixed: 35 -> 111-115 tok/s by replacing --fit-target with -ngl 99 --n-cpu-moe 2.
+- 2026-11-06 git init + .gitignore (data.json, .webview/, *.tmp, __pycache__/, settings.local.json, exports/). Commit 9c871ae.
+- 2026-11-06 settings.json read by app.py and server.py, safe defaults tested (bad JSON, wrong types, missing file). Commit 608f522.
+- 2026-11-06 Export/Import buttons (real buttons, keyboard focus, status text). Export writes
+  F:\app-dev\projects\atlas-chat\exports\atlas-backup-<time>.json. Import checks the file, asks, backs up current data first.
+  Tested: bad JSON and wrong shape rejected with nothing changed, good file imported, focus returns to Import. Commit 945440d.
+- 2026-11-06 Document search per bot: Documents folder field in the bot editor, top 3 snippets added to the system prompt,
+  answer stats show "docs: file names". Tested with sample-docs: "How many days does shipping to Australia take?" -> "5-8 days",
+  header X-Atlas-Sources ["shipping.md","refund-policy.md"]. A missing folder still answers normally. Commit e266240.
+- After each change: assist test OK (54 tok/s) and http://127.0.0.1:8090 loaded with no console errors.
+
+- 2026-11-06 16:40-17:10 (chat session):
+  - Header MODEL picker: change the current bot's model from the chat header, shows [LOADED] / [MISSING].
+  - Team run (header button): Agent planner writes a JSON plan and assigns steps to chosen bots, each step is worked,
+    then Reviewer replies PASS or FIX (1-3 rounds), the final work is handed to the next step. Every stage streams live
+    with status and thinking. Saved as a "TEAM:" chat. Reviewer bot is created on first run (model tasks).
+    Checked with node --check and an element-id check. NOT yet run end to end in the window.
+  - assist: --fit-target removed, -ngl 99 set. Same speed (53.8 tok/s), no longer depends on fit.
+  - bench.ps1 + bench-results.md: llama-bench sweep. Coder without MTP: 24=39.1 tok/s best, 32 collapses to 4.7.
+    Config keeps the overnight setting (28 + MTP = 41.6 through the server).
+  - Wasted: started downloads of HauhauCS Gemma4-26B-A4B QAT Q4_K_M and coder i1-IQ3_XS before reading this file.
+    Both stopped as partial files: F:\models\gemma4-26b-a4b-qat (13.8 GB) and F:\models\qwen3.6-35b-a3b-abl-iq3 (4 GB).
+    Jason can delete both folders. Lesson: read HANDOFF.md before starting.
+
+## What worked
+- huggingface_hub snapshot_download for 2 files; curl.exe -fL -C - --retry 5 for the rest (gemma 26B: 16.8 GB in about 8 min).
+- HF API from the PC (Invoke-RestMethod https://huggingface.co/api/models/<repo>/tree/main) for real file names, sizes, sha256.
+- --load-mode none (new name for --no-mmap in this build).
+- Setting -ngl 99 + --n-cpu-moe by hand. Speed is the reliable spill signal (big drop = VRAM spilled).
+- pywebview native window. WebView2 runtime 156 is installed.
+
+## What failed (do not repeat)
+- huggingface_hub froze on qwen3-14b at 3.44 GB. Use curl.exe -fL -C - with --retry.
+- curl without -f wrote a 0-byte file on a wrong file name (bartowski files start with "huihui-ai_").
+- --no-mmap: removed in this llama.cpp build -> llama-server exits, llama-swap returns 500. Use --load-mode none.
+- --fit (default on) + --fit-target: wrong both ways on Vulkan/Windows. It over-filled VRAM before, and now (desktop apps
+  using 3.9 GB) it under-filled and cut tasks to 35 tok/s. Set -ngl / --n-cpu-moe by hand. --n-cpu-moe 0 counts as unset.
+- "Shared GPU memory under 0.3 GB" is not a usable target: the Windows counter also counts the CPU-side expert weights
+  (llama-server shows 6-13 GB shared even at the fastest settings). Judge by tok/s and dedicated usage instead.
+- test-models.ps1 max_tokens 600: thinking models (coder, mentor) sometimes use all 600 on reasoning, so the answer column
+  is empty. Speed is still valid. Use a longer max_tokens to read answers.
+- curl / Python requests from the cloud sandbox to huggingface.co are blocked. Query HF from the PC.
+- Edge and Chrome are not installed. Launch via pywebview (app.py).
+- C:\Users\zezu1\AppData\Local\Microsoft\WindowsApps\pythonw.exe is a Store stub without pywebview. Use the pythoncore-3.14-64 path.
+- PowerShell -File with a [string[]] param only takes the first value. Use & 'script.ps1' -Models a,b,c.
+- PowerShell -replace on config.yaml silently missed once. Use Desktop Commander edit_block for config edits.
+- app.py takes about 6-10 s to open its window (pywebview import). Wait before checking port 8090.
+
+## 2026-11-10 cloud session (branch claude/intelligent-bohr-9laqiq, pushed to GitHub on Jason's request)
+Checked with: python -m unittest discover tests (30 tests OK) and tests/ui-test.js in Chromium against
+tests/mock_llama.py (31 checks OK). NOT run on the Windows PC and NOT run against the real models yet.
+
+Lost chats / lost Zeus bot: causes found and fixed
+- The UI saved the default bots over data.json whenever /api/state failed to load once. Fixed: a failed load never saves.
+- A second or old window saved its old copy over newer data. Fixed: each save carries a revision number, the server
+  answers 409 to a stale window and the window shows "Reload".
+- data.json lived in the app folder, so a fresh clone or a new build started empty. Fixed: data is now in
+  %APPDATA%\AtlasChat\data.json (setting "data_dir"). First start copies the old app-folder data.json there.
+- Backups: %APPDATA%\AtlasChat\backups. "removed-*" = made before any save that removes a bot, chat or message
+  (never auto-deleted). "auto-*" = every 10 minutes while in use (newest 40 kept). "damaged-*" = unreadable file kept.
+- To look for Zeus on the PC: F:\app-dev\projects\atlas-chat\exports\*.json and data.json.tmp, then Import the file.
+  Nothing from before this change can be recovered from the cloud.
+
+New
+- File tools for models (filetools.py): list_files, read_file, write_file inside the bot's Workspace folder only.
+  Edit bot > Workspace folder + File access (Off / Read only / Read and write, ask / Read and write, do not ask).
+  Old file versions go to <workspace>\.atlas-backups. Bad tool calls return a plain ERROR text that names the fix,
+  the model then retries. Models without native tool support switch to a text <tool_call> format on their own.
+- Errors: plain title + "What to do" + technical details (folded). Saved with the chat. Red bar at the top for load/save problems.
+- Vague questions: BASE_PROMPT in index.html is added in front of every bot's system prompt.
+- Document search reads .docx and .pdf (pypdf if installed: pip install pypdf. Without it only simple PDFs work).
+- settings.local.json now really overrides settings.json (it was in .gitignore but never read).
+- Server only answers pages from this PC (Host/Origin check). Wrong state JSON is refused.
+- Team run tested end to end with the fake model server. Stage titles now stay after a reload.
+- Fixed: Stop on Windows (ConnectionAbortedError), partial answer lost on Stop, two same-role messages in a row
+  (Gemma template error), numbered lists shown as bullets, keyboard focus lost every 5 s, Ctrl+E crash with a dialog open,
+  switching chats while an answer streams, chunk order in docsearch, Attach is now a real button.
+- bench-results.md converted to UTF-8. bench.ps1 now writes UTF-8. test-models.ps1 max_tokens 2000.
+
+## Open items, in priority order
+1. Jason: on the PC run  git pull, then  python -m unittest discover tests,  then open the app and check that
+   "Data: C:\Users\zezu1\AppData\Roaming\AtlasChat\data.json" shows at the bottom left with all bots and chats.
+2. Test file tools with the real models: Edit bot (Coder) > Workspace folder > Read only > ask "what is in this folder".
+   llama-server needs --jinja for native tool calls. Without it the app uses the text format (slower, less reliable).
+3. Book import: DONE (commit f00ff52): .epub .mobi .azw3 .fb2 .rtf .odt and big PDFs read in parts.
+   Plan: add readers to docsearch._read_text (epub = zip of xhtml, standard library), strip markup, split into chunks,
+   store chunks as JSON next to the data file, and give the model a search_book / read_chapter tool in filetools.py.
+   A whole book does not fit in model memory, so the model must read it in parts ("truncate" = cut to the part that fits).
+4. bench.ps1, launch.ps1, test-models.ps1 still hold F:\ paths. PowerShell changes here were not run (no PowerShell in the cloud).
+5. Installer: Tauri NSIS (build-release.ps1). See "Release" below.
+6. Jason: try mentor in the app on a few real advisor/teacher questions. If you prefer the old one, set the bots to "mentor-dense".
+7. Scanned PDFs (images) have no text. They need OCR, not planned.
+
+## Release: how to get a client install ready
+install.ps1 was removed on 2026-11-10 (old Python and pywebview installer). The Tauri NSIS installer replaces it.
+The installer already carries Python, llama-swap and llama.cpp (resources\atlas\runtime). The app finds them relative to its own folder.
+Do the steps in order. Each one has a check.
+
+1. On Jason's PC: .\BUILD-ATLAS.ps1, then .\build-release.ps1. Check: no FAIL, installer in target\release\bundle\nsis.
+2. Real models test (15 minutes): open the app, send one message to each bot, run one Team run, and do the file tools test.
+   Check: no red error box. If one shows, copy its TECHNICAL DETAILS into this file.
+3. Decide the client model set (Jason). Rule: normal (non-abliterated) models only. Pick by client VRAM:
+   8 GB, 12 GB, 16 GB tiers. Write the Hugging Face repo, file name, size and sha256 for each here.
+4. runtime\llama-swap\config.yaml still points at F:\models\... (Jason's models). Make it find models by folder, not by fixed path.
+5. On a clean Windows VM or the laptop: run the installer, copy the models, open the app.
+   Check: badge shows SWAP ON, 4 bots answer.
+6. Smoke test: .\test-models.ps1 -Models coder,mentor,assist,tasks   Check: 4 lines with OK.
+7. Tag the release in git (for example v0.1.0) after steps 1, 2 and 5 pass.
+
+Dependencies
+- Windows 10 or 11, 64-bit. WebView2 runtime (part of Windows 11).
+- Python, llama-swap and llama.cpp are bundled in the installer. Model files are NOT bundled (too big).
+- Tests only: Node + Playwright for tests\ui-test.js (developer PC, not the client).
+
+Known gaps before a paid client install
+- No uninstaller. To remove: delete the shortcut, the atlas folder and %APPDATA%\AtlasChat (holds the client's chats).
+- No auto update. An update = run the new installer. Data is kept.
+- The installer is not code signed.
+- Check the licence of each client model and of llama.cpp / llama-swap before a sale (all permit bundling as of last check: verify).
+- Book import (open item 3) is not built.
+
+## Docs (Claude Docs artifacts)
+- Local Models Playbook: https://claude.ai/artifact/XuQtr2neFifyMmwtsg6CSH
+- Local AI Business Plan: https://claude.ai/artifact/Msnhk9hogbg2tVgfjFWDJB (offer, deployment, training, leads, proposal)
+- Gmail drafts (to Jason only, not sent): 3 proposal emails, law / accounting / physio.
+
+## Rules
+- Never send emails, never push to GitHub, never delete files outside atlas-chat without Jason.
+- Client installs use normal (non-abliterated) models only.
+- Accessibility: keyboard access, visible focus, reduced motion, works at phone width.
+
+
+==============================================================================
+PART 4: HANDOFF-NEXT.md
+Handoff: next steps (10 Nov). Last changed 2026-11-10.
+==============================================================================
+
+# Atlas Chat: handoff of all unfinished work (2026-11-10)
+
+Read this first. HANDOFF.md is the older log and the rules file. This file lists only what is still open.
+Repo: F:\APP-DEV\projects\atlas-chat (WSL: /mnt/f/APP-DEV/projects/atlas-chat), branch main.
+Shipped backend and UI (the only copy now): atlas-rust-desktop/src-tauri/resources/atlas/
+
+## Rules
+- Never push, never send email, never delete files outside atlas-chat without Jason.
+- Commit only your own files (git add <file>). Never git add -A. Do not git pull (tree is dirty).
+- Client installs use normal (non-abliterated) models only.
+- Keep keyboard access, visible focus, reduced motion, phone-width layout.
+- Only one chat works on this project at a time. Jason runs builds in his own window (.\build-release.ps1).
+  Do not edit resources/atlas while a build runs.
+- WSL: no Windows .exe, no PowerShell, no Windows node, no push. Python: ~/atlas-venv/.venv/bin/python (uv, 3.12).
+  git: git -c safe.directory='*' -c core.autocrlf=true <cmd>
+- Keep .ps1 files ASCII only (PowerShell 5). Add a docs/DEVLOG.md entry for each change.
+- Short ASD-STE100 sentences. First line = one action.
+
+## State now
+- Done and checked in code: Zeus load-fail guard, 10x bots (8) with merge into old installs, Jinja system-message fix,
+  commander v0.3.0, stale src files and mcp_agent.py removed, root duplicates and old handoffs deleted (see DEVLOG).
+- Tests in WSL: tests/ 82 OK, validation-tests/ 9 OK, atlas-rust-desktop/validation-tests 31 OK, check-bundle.py OK.
+- Backups: F:\APP-DEV\backups\atlas-cleanup-20261110-full.tar.gz, atlas-duplicates-20261110.tar.gz.
+  (atlas-cleanup-20261110.tar.gz is redundant.)
+
+## Uncommitted work of mine (mixed with Jason's changes, so not committed). Commit these together:
+- resources/atlas/server.py (empty llama_swap defaults, plus about 12 lines of the Jinja work)
+- tests/test_no_hardcoded_paths.py (5 tests, fails until server.py is committed)
+- BUILD-ATLAS.ps1 (runs both validation-tests folders, node tests use the shipped index.html)
+- Also uncommitted from Jason: validation-tests/test_commander_paths.py, test_system_message_order.py, tests/_paths.py.
+
+## UNFINISHED, in priority order
+
+### A. Needs a decision from Jason
+1. DONE: install.ps1 deleted for good on 2026-11-10 (Tauri installer replaces it).
+   Restore it, or drop the client installer plan.
+2. Shipped settings.json holds Jason's F:\ llama-swap paths and data_file. Make a clean client copy.
+   Rust process_supervisor.rs (line ~1021) reads llama_swap_exe from settings.json.
+3. Client model set: normal models, 8/12/16 GB tiers. Write repo, file name, size, sha256 for each in HANDOFF.md.
+4. Keep "compression": "zlib" in tauri.conf.json? (source unknown)
+5. Remove Desktop and Start Menu shortcuts for strict "F: only"? Claude-style context panel (never built)?
+   Rename to Atlas Swarm Manager (keep dev.atlas.chat; test installer upgrades)?
+6. Delete the redundant backup tar.gz, branch feat/ponytail-and-skills (obsolete), and stray root files
+   (atlas-*.log, atlas-*.txt, s.txt, swpr, logs/) after Jason checks them.
+
+### B. Must run on the PC (nothing here was run: no PowerShell in WSL)
+7. .\BUILD-ATLAS.ps1 and the 3 node tests: validation-tests\test_chat_queue.js, test_chat_queue_runtime.js, test_ui_safety_contracts.js
+   (pass the shipped index.html path).
+8. .\launch.ps1 (now checks resources\atlas\server.py). The three Start *.bat files still hold F:\ paths and
+   are modified by Jason: check them.
+9. .\bench.ps1 -ToolsDir <folder> (or env ATLAS_TOOLS_DIR) and .\test-models.ps1 -Models coder,mentor,assist,tasks.
+10. Rebuild Tauri (.\build-release.ps1), install, then runtime test in the Windows window: default prompt, knowledge library,
+    10x bots on a fresh and an old data.json, /swarm, queue, bot drag, Stop. No regressions.
+11. Real-model test of file tools (Edit bot > Workspace folder > Read only > "what is in this folder").
+    llama-server needs --jinja for native tool calls. Also send one message per bot and run one Team run.
+    A timeout or empty answer is a failure (the last smoke test returned empty after 302 s).
+12. Installer checks (NSIS, F: only): folder page keeps Next disabled for a C: path, default
+    F:\APP-DEV\projects\atlas-chat\Atlas Chat, no "Delete the application data" box. Nothing new in
+    %APPDATA%\dev.atlas.chat or %LOCALAPPDATA%\dev.atlas.chat. Find out what the 2026-11-09 23:00 installer in
+    target\release\bundle\nsis holds. Test data and settings preservation across install and rollback.
+13. Data move to F:\APP-DEV\data\Atlas Chat\app (app closed, back up first, merge by chat id, delete C: copies only
+    when Jason agrees). Two data sets: root data.json (1.9 MB) and %APPDATA%\dev.atlas.chat\data.json (19 bots).
+    The installed app (F:\...\Atlas Chat\atlas) reads its own data.json.
+
+### C. Code to write
+14. Env vars: ATLAS_PROJECT_ROOT, ATLAS_RUNTIME_ROOT, ATLAS_WORKSPACE, ATLAS_CHAT_WORKSPACE, ATLAS_DATA_DIR.
+    Unify and document one scheme. Rust data_root() falls back to root/.atlas-data, Python to its own folder: reconcile.
+    Needs a Rust change and a build.
+15. Queue and conversation switching (NEXT-RELEASE-SEQUENCE item 3): keep generation running when another chat opens,
+    advance the queue after removal. Bot drag-to-reorder: #bots has no drop handler, gaps reject drops. Bot names must not be selectable.
+16. Operations: "open this conversation" route check, selected-task detail view (artifacts, full paths, evidence,
+    workspace, "View live feed"; label snapshots as snapshots). Activity endpoint /api/ops/conversations/{id}/activity
+    and its panel are untested together.
+17. Benchmark: split cold load, ready time, warm first token, prefill, decode, unload. The current tok/s mixes load and decode.
+    Fix Ollama keep_alive "0" and the shared timer in atlas_node.rs. Then baseline CSV before any tuning
+    (MODEL-PERFORMANCE-RELEASE-PLAN.md). Do not change model defaults without measurements.
+18. Feature follow-ups (one at a time, small): workflow presets for Team run (save, rerun, stop and retry at step boundaries),
+    retrieval source visibility in chat, image capability check per bot (unknown/vision/text-only), voice settings live checks.
+19. Optional: safe write_workspace_file in the commander (inside root, create-only unless overwrite=true); review
+    Desktop\at patches (Atlas-MCP-Supplement, Atlas-Dev-Engine-MCP-v1.8); package the /swarm skill
+    (python -m scripts.package_skill <skill-path>) if it ships to others.
+20. Client release: bundle folder (app, llama-swap, llama, models), clean-VM install, smoke test, git tag after merge.
+    Missing: offline install (pip download wheels), uninstaller, auto update, code signing, licence check of models,
+    llama.cpp and llama-swap. Scanned-PDF OCR: not planned.
+
+### D. Checks by eye (untested)
+21. Text selection CSS in index.html: MCP, Ops and Usage dialog text may be non-selectable. Message text must stay selectable.
+22. Right-click opening the Windows Share panel (guards never tested live). Context/Plugins/MCP panels stack vertically.
+    TEST/VERIFY/ITERATE hidden unless ?dev=1. Logo crop and animation.
+23. Frontend mismatch after the 2026-11-09 source loss: atlas-rust-desktop/src (App.tsx, CSS, main.tsx) is not exact.
+    Check the startup shell and Nodes/Operations panels. More copies may be in Desktop\at and Downloads.
+    atlas-rust-desktop/index.html must stay the React startup page. Do not copy the chat page there.
+24. Do not strip .pyc files from the bundle (main.rs sets PYTHONDONTWRITEBYTECODE=1).
+25. Mentor test on real advisor questions; assist and coder tuning with live hardware readings.
+
+## Warnings
+- ZEUS bot gave wrong advice to commit .exe installers. target/ and "Atlas Chat/" are gitignored. Installers go in releases.
+- Do not push. Branch feat/default-prompt exists locally. The old Desktop handoff said to push: ignore that.
+- Other repo: atlas\atlas-components\scripts\kill-llama\Stop-LocalLLM.ps1 has an uncommitted change (stops llama-swap).
+  Ask before committing.
+- Unexplained: what removed the folders on 2026-11-09 23:39, and the chat request sent at 20:21:24.
+
+
+==============================================================================
+PART 5: ATLAS-ROADMAP-AND-RELEASE-GATES.md
+Roadmap and release gates. Last changed 2026-11-09.
+==============================================================================
+
+# Atlas — integrated roadmap and release gates
+
+## Architecture decision
+
+Keep Atlas as one product and repository with separately deployable services. Do not merge the control plane into the desktop process. The control plane is integrated into the Atlas source tree, while running as its own Rust service. This preserves the desktop lifecycle boundary and lets the network service scale independently.
+
+- React + TypeScript: Desktop presentation and interaction.
+- Rust/Tauri: Desktop lifecycle, node supervisor, local resource limits, signing, Docker process ownership and native APIs.
+- Python: existing Atlas Chat API/MCP compatibility and model tooling; retain where it preserves working integrations.
+- Rust/Axum: network control plane.
+- PostgreSQL: network identities, workload queue, node heartbeat state and contribution receipts.
+- llama-swap/Ollama adapters: local inference provider compatibility.
+
+## Completed in this delivery
+
+- Added Rust/Axum control-plane service under `services/atlas-control-plane`.
+- Added PostgreSQL schema/migrations, challenge-response Ed25519 registration, signed node request verification, replay fingerprints, heartbeats, node eligibility checks, scheduler-signed workload envelopes, receipt signature validation, operator node revocation and manual contribution review.
+- Added localhost-only Docker Compose deployment and key-generation binary.
+- Connected desktop heartbeat consent reporting to the server contract.
+- Improved local model discovery and benchmarking to support both Ollama `/api/*` and OpenAI-compatible `/v1/*` endpoints, defaulting new profiles to the existing llama-swap port 8080.
+- Improved Docker workload cancellation by recording the container ID file and stopping the container itself before terminating its owned CLI process.
+- Preserved the existing chat iframe, Python API, data files and plugin-manager architecture.
+
+## Still required before Atlas can be called complete
+
+### Desktop and node
+- Compile Tauri/Rust on Windows and fix any platform-specific compiler/runtime issues.
+- Run the actual React production build and packaged NSIS/MSI build.
+- Verify RX 9070 XT telemetry and llama-swap model benchmark on the user's PC.
+- Verify Docker Desktop isolation, CPU/RAM enforcement, stop-on-consent-revocation and startup recovery.
+- Implement GPU passthrough safely for approved worker images.
+- Replace raw private-key file storage with Windows DPAPI-backed protected storage and platform ACLs.
+
+### Network and distributed inference
+- Add inference worker claim/result/stream protocol and node-side inference execution.
+- Add compatibility-aware model placement and scheduling using GPU VRAM, RAM, model quantization, context length, throughput, bandwidth and node health.
+- Add model transfer/cache integrity, backpressure, cancellation and node failure recovery.
+- Add independent proof/verification strategy; node-signed receipts alone do not prove work was honestly performed.
+- Add signed settlement statements and auditable contributor balances.
+
+### Commercial production
+- Customer identity, API keys, scopes, quotas and rate limiting.
+- Subscription and payment provider integration, tax/invoice handling, refunds and chargebacks.
+- Contributor payout/KYC compliance only when the business/legal model is defined.
+- Public TLS ingress, WAF/rate limits, secret manager, backups, monitoring, incident response, abuse controls and penetration test.
+
+## Non-negotiable safety gates
+
+- Node participation and remote execution are separate opt-ins.
+- A node's off switch stops accepting new work and terminates its owned active container.
+- No global process-name kills; only processes/containers created by Atlas are stopped.
+- No network or host mounts in default sandbox workloads.
+- Immutable image digests only; no `latest` tags.
+- Never call an execution receipt a verified contribution until independent evidence has been reviewed.
+- No public endpoint, customer API sale or payment collection until the public control plane and commercial safeguards are complete.
+
+
+==============================================================================
+PART 6: docs/PROJECT-MASTER.md
+Project master document. Last changed 2026-11-09.
+==============================================================================
+
+# Atlas Chat — Project Master Document
+**Document date:** 8 November 2026  
+**Status:** Living founder / engineering source of truth  
+**Project phase:** Active development; pre-release; fundraising narrative is exploratory
+
+## 1. Executive summary
+
+Atlas Chat is being developed as a local-first AI desktop application with a longer-term ambition to become a hybrid AI platform. The product thesis is that powerful AI should not be confined to centralized cloud interfaces or datacentre infrastructure. Atlas seeks to bring together local inference, model/tool access, agent workflows, operational visibility and, over time, distributed compute and a broader developer/community ecosystem.
+
+The desktop application is the practical product foundation. The broader platform is a strategic direction, not a claim that every planned service is already operational.
+
+## 2. Vision, mission and product thesis
+
+**Vision:** Make capable, controllable AI infrastructure accessible to individuals and organizations, including through hardware they already own.
+
+**Mission:** Build a coherent desktop-to-platform experience for running models, coordinating agents, connecting tools and observing execution.
+
+**Core thesis:** Local compute can improve user control, reduce dependence on centralized inference for suitable workloads, and create a foundation for optional hybrid and distributed execution. The product must prove that this can be delivered with a simpler, safer and more useful user experience than assembling separate tools.
+
+### Product principles
+- Local-first by default where technically practical.
+- Hybrid connectivity is optional and explicit.
+- User data and existing workflows must be preserved during upgrades.
+- Agent execution must be observable, attributable and auditable.
+- Privileged operations require scoped approval.
+- Reliability and end-to-end validation outrank feature-count claims.
+- Desktop and online products remain distinct, with deliberate integration boundaries.
+
+## 3. Product definition
+
+### Near-term product: Atlas Desktop
+A Windows desktop experience that brings together chat, local model access, tools, knowledge and developer/operations capabilities in one application.
+
+### Longer-term platform: Atlas Network / ecosystem (working concept)
+Potential platform capabilities include node registration, distributed workload scheduling, contribution verification, workload consent, centralized coordination and commercial APIs/services. These are roadmap concepts unless separately demonstrated and accepted.
+
+### User groups to validate
+1. Individuals who want local AI and control over their data.
+2. Developers who need model-powered tools, agent workflows and local automation.
+3. Technical teams that need governed agent execution and observability.
+4. Potential compute contributors or node operators, if distributed execution proves viable.
+
+These are target hypotheses, not validated customer segments.
+
+## 4. Architecture map
+
+### Desktop and application layer
+- React + TypeScript + Vite UI.
+- Tauri + Rust desktop shell and native integration.
+- Existing Python chat server retained as a compatibility/backend component.
+- Launcher, process lifecycle and installer/updater responsibilities.
+
+### AI and integration layer
+- Local model serving via llama-swap and model endpoints.
+- Model aliases historically recorded: `assist`, `coder`, `mentor`, `mentor-dense`, `tasks`.
+- MCP host/tool integration, tool discovery, invocation, audit and approval boundaries.
+- Knowledge Library, document ingestion and conversation import workflows.
+
+### Agent and platform layer
+- Atlas Node integration and hardware/runtime reporting.
+- Operations dashboard for status, queue and audit visibility.
+- Agent registry/telemetry concepts: identity, parent-child relationships, host/PID, task state, heartbeats, logs, traces and metrics.
+- Dev Engine for local model-assisted development with isolated workspaces and reviewable patch proposals.
+- Rust control-plane workstream for potential coordination and distributed workload foundations.
+
+### Historical local endpoints (must be verified)
+- Python API: `127.0.0.1:8090`
+- llama-swap: `127.0.0.1:8080`
+- llama-server: port `5801`
+
+These are environment-specific records from prior handoffs, not product guarantees.
+
+## 5. Workstream status snapshot
+
+Status labels: **Documented installed**, **staged / unconfirmed**, **partially integrated**, **planned**, **blocked / needs runtime validation**.
+
+| Workstream | What the record says | Current confidence |
+|---|---|---|
+| Existing Python chat/backend | Established foundation and compatibility requirement | Existing project component; exact current tree not re-inspected for this document |
+| React/Tauri desktop | Production build and installer work progressed; Rust lifecycle and packaging repeatedly iterated | Partially validated; target-machine acceptance required |
+| Operations Integration v0.1 | User ran installer; dashboard foundation installed without changing chat data/settings/Python files | Documented installed |
+| Agent Observability v0.1 | Registry, telemetry, SQLite, SSE and SDK staged; 16 staged tests reported | Staged; installation not confirmed |
+| MCP reliability | Handshake, tool loop, duplicate-call and round-budget fixes across patch iterations | Several staged/smoke validations reported; current end-to-end status must be retested |
+| Dev Engine local worker v1.3 | Local coder model, disposable workspace and reviewable JSON patches | Staged; 22 tests reported; Windows production integration unconfirmed |
+| Control Plane v0.1 / v0.3.0–0.3.1 integration | Rust service, Docker assets, migrations, scheduler/contribution utilities and desktop integration patches | Some files reported installed; merge conflicts/proposals and target runtime remain to validate |
+| Knowledge Library | Local indexing and document support, conversation import and provenance features | Implemented across iterations; dependency/runtime acceptance required |
+| UI / avatars / import | Selectable responses, copy actions, bot avatars, browser transcript import, MCP loop guardrails | Patch validation reported; installation state depends on latest installer |
+| Conversation queue | Queue and Rust integration work exists; user reports items do not advance after removal and opening a conversation can cancel generation | Active blocker; not accepted |
+| Operations navigation | User reports “open this conversation” does not navigate to Operations as intended | Active blocker; not accepted |
+| Live agent desktop / SSH | Screenshot storage foundation described; live desktop/SSH viewing still outstanding in earlier handoff | Planned / incomplete |
+
+## 6. Confirmed project constraints and engineering rules
+
+- Project root recorded as `F:\APP-DEV\projects\atlas-chat`.
+- Desktop project recorded as `F:\APP-DEV\projects\atlas-chat\atlas-rust-desktop`.
+- Keep Atlas Desktop separate from Atlas Online.
+- Preserve the existing Python-served chat UI and integrate rather than replace unnecessarily.
+- Do not overwrite `settings.json`, `data.json`, chat history, knowledge data, model files, exports or Git metadata without an explicit, reviewed migration.
+- Prefer in-place upgrade/replace of the installed application, with pre-update backup, version detection, cleanup of superseded generated artifacts and rollback on failure.
+- Desktop must own and shut down only child processes it started. Track exact PIDs/process handles; graceful shutdown first, bounded forced termination only for owned children.
+- Do not use broad process-kill commands.
+- For Atlas troubleshooting, work one problem at a time and request only the files required for that problem.
+- User expects complete copy-paste PowerShell blocks with project directory established first.
+- Prefer direct in-place scripts/edits over patch ZIPs when safe; when a ZIP is necessary, explain why.
+- Release discipline: inspect → plan → integrate → targeted tests → regression/integration tests → production build → fix/retest → end-to-end runtime acceptance.
+- Clearly distinguish source-complete, tests-passing, build-passing and runtime-verified.
+- Each milestone needs a concise completed / remaining / blocker recap.
+
+## 7. Development history and version interpretation
+
+Atlas history contains several parallel version namespaces:
+- Legacy Python project snapshots and source archives.
+- Feature patch versions (for example Operations v0.1, Agent Observability v0.1, Dev Engine v1.3, MCP v1.5).
+- Full-source snapshots (v0.3.0 and v0.3.1).
+- Control-plane integration patches (v0.3.0 / v0.3.1).
+- Desktop build-sequence scripts (v0.3.3 / v0.3.4).
+- Rust test-build and knowledge/queue upgrade iterations.
+- Installer/release package versions.
+
+These are not necessarily sequential public product releases. The project should not retroactively invent a single version chronology where the evidence only records separate patch streams. Future releases should have one canonical product version plus component versions in a manifest.
+
+## 8. Roadmap
+
+### P0 — Stabilize the desktop release path
+- Establish one authoritative current source tree and clean working baseline.
+- Verify installed application identity, launcher path and upgrade behavior.
+- Ensure shortcuts launch the current installed build through the managed launcher.
+- Validate backup, in-place replacement, cleanup and rollback.
+- Confirm lifecycle ownership for every child process Atlas starts.
+- Run clean Windows production build and installer acceptance.
+
+### P0 — Fix core conversation reliability
+- Repair queue advancement after deleting/removing queued messages.
+- Ensure queue worker wakes, reorders and consumes the next eligible item correctly.
+- Ensure opening a conversation does not cancel or invalidate active generation.
+- Fix conversation-to-Operations navigation and task linkage.
+- Add regression tests for queue mutation, cancellation, conversation switching and active generation.
+- Validate through real UI runtime, not only unit tests.
+
+### P1 — Complete MCP reliability and safety
+- Verify initialize/discovery/call lifecycle.
+- Verify child process cleanup on failed handshake and normal shutdown.
+- Ensure advertised tool names match actual handlers.
+- Bound tool loops, suppress duplicate calls and return honest incomplete-work summaries.
+- Verify audit events and approval enforcement end to end.
+
+### P1 — Integrate agent observability
+- Connect actual workers to registry and heartbeat.
+- Instrument real model/tool calls, task handoffs and failures.
+- Correlate task IDs, trace IDs and spans.
+- Add live logs, metrics and trace waterfall.
+- Keep screenshot capture clearly distinct from interactive live desktop streaming.
+
+### P1 — Finish Node / Control Plane integration
+- Reconcile `.atlas-control-plane-proposed` files deliberately; do not blindly overwrite local changes.
+- Validate gateway contract and node identity.
+- Test scheduler, contribution verification and consent boundaries.
+- Run integration tests against the actual desktop and service.
+- Do not enable remote workload consent before security and acceptance gates pass.
+
+### P2 — Product quality and developer experience
+- Complete knowledge indexing and import reliability.
+- Improve documentation, onboarding and diagnostics.
+- Validate bot avatar and UI patch installation.
+- Build coherent Operations selected-task evidence view, including artifacts, full paths, workspace evidence and live-feed capability, without destabilizing Chat/Node.
+
+### P3 — Commercial validation
+- Interview target users and define initial customer problem.
+- Select a narrow paid use case.
+- Validate willingness to pay and support requirements.
+- Build pricing and unit economics from measured inference/compute costs.
+- Establish security, privacy, licensing and legal review.
+- Only then set a specific fundraising amount and use of funds.
+
+## 9. Release acceptance gates
+
+A release is not complete merely because source code exists or a patch ZIP was generated.
+
+1. **Source gate:** changes are integrated into the authoritative working tree; no unresolved proposed merges.
+2. **Targeted test gate:** tests for changed components pass.
+3. **Regression gate:** existing chat, data persistence, MCP and lifecycle tests pass.
+4. **Build gate:** frontend, Rust checks/tests and production Tauri bundle pass.
+5. **Installer gate:** clean install and in-place upgrade tested; app identity and shortcuts correct.
+6. **Data safety gate:** settings, chats, models and user data preserved; rollback proven.
+7. **Runtime gate:** real target-machine end-to-end test passes.
+8. **Release evidence gate:** version, manifest, hashes, logs and known limitations recorded.
+
+## 10. Commercial model hypotheses
+
+Potential models to validate rather than promise:
+- Free/local desktop core with paid advanced features.
+- Paid team/organization tier for managed agent workflows and governance.
+- Optional hosted APIs or managed control-plane services.
+- Marketplace or paid integrations, if an ecosystem develops.
+- Distributed compute coordination or workload marketplace, only after proving reliable supply, demand, security and economics.
+
+The core product should remain valuable without requiring speculative token economics or an unproven compute marketplace.
+
+## 11. Fundraising readiness
+
+A credible investor conversation needs more than a compelling architecture. Required proof:
+- Working product demo on target hardware.
+- Clear comparison against alternatives and a specific wedge.
+- Customer discovery evidence and design partners.
+- Usage, retention and task-success metrics.
+- Measured local-vs-cloud cost/performance on representative workloads.
+- Security model, licensing/IP review and data-handling documentation.
+- Pricing experiments and cost-to-serve model.
+- Hiring plan, milestones and evidence-based funding ask.
+
+Do not invent TAM/SAM/SOM, revenue, users, partnerships, benchmark advantages, patents or funding requirements. Add sourced numbers only after research and validation.
+
+## 12. Documentation governance
+
+This document is the strategic and status overview. `DEVLOG.md` is the chronological change record. `EVIDENCE-REGISTER.md` distinguishes claims from proof. The GitHub README is the public entry point. Investor materials should be generated from the same facts and must not overstate maturity.
+
+Each future iteration entry should include:
+- Date/time and branch/commit (when available).
+- Version namespace and patch identifier.
+- Problem / user request.
+- Discussion and decision.
+- Files/components affected.
+- Change summary.
+- Backup/rollback reference.
+- Tests run and exact results.
+- Build/package result and hashes.
+- Runtime acceptance result.
+- Remaining issues and next action.
+
+**Historical completeness note:** This document is reconstructed from available saved handoffs, devlogs, patch manifests, build logs and conversation summaries. It is not a verified export of every Atlas-related chat message or every commit. Missing historical entries must be added from source logs/Git rather than fabricated.
+
+
+## 13. Reconciled repository roadmap (source-derived)
+
+The repository already contains `ATLAS-ROADMAP-AND-RELEASE-GATES.md`. That file is retained as the canonical detailed delivery-gate document; it is not replaced by this master document.
+
+The existing roadmap records the following architecture decision:
+- Keep Atlas as one product/repository with separately deployable services.
+- Do not merge the control plane into the desktop process.
+- Keep the control plane as an independent Rust service.
+- React + TypeScript is the desktop presentation layer.
+- Rust/Tauri owns desktop lifecycle, node supervision, local resource limits, signing, Docker process ownership and native APIs.
+- Python retains existing Atlas Chat API/MCP compatibility and model tooling where it preserves working integrations.
+- Rust/Axum is the network control plane; PostgreSQL is the planned persistence layer for network identities, workload queue, node heartbeats and contribution receipts.
+- llama-swap/Ollama adapters provide local inference-provider compatibility.
+
+The existing roadmap describes a delivery that added a Rust/Axum control-plane service, PostgreSQL migrations, Ed25519 challenge-response registration, signed node request verification, replay fingerprints, heartbeats, eligibility checks, scheduler-signed workload envelopes, receipt signature validation, operator revocation, manual contribution review, localhost-only Docker Compose and key generation. It also records desktop heartbeat-consent reporting, Ollama/OpenAI-compatible model discovery and benchmarking, and improved Docker workload cancellation.
+
+The same roadmap explicitly preserves the existing chat iframe, Python API, data files and plugin-manager architecture.
+
+### Existing roadmap's outstanding gates (preserved)
+- Windows Tauri/Rust compile, React production build and packaged NSIS/MSI build.
+- Hardware telemetry and local model benchmark on the target PC.
+- Docker isolation, resource enforcement, consent revocation and startup recovery.
+- Safe GPU passthrough for approved worker images.
+- Windows DPAPI-backed key storage and platform ACLs.
+- Inference worker claim/result/stream protocol and node-side inference execution.
+- Compatibility-aware model placement, model transfer/cache integrity, backpressure, cancellation and node failure recovery.
+- Independent proof strategy; a node-signed receipt alone is not proof that work was honestly performed.
+- Signed settlement statements and auditable contributor balances.
+- Customer identity, API keys/scopes, quotas/rate limiting, billing, tax/invoices, refunds and chargebacks.
+- Public ingress, WAF/rate limits, secret management, backups, monitoring, incident response, abuse controls and penetration testing.
+
+### Existing roadmap's non-negotiable safety gates (preserved)
+- Node participation and remote execution are separate opt-ins.
+- The node off switch stops new work and terminates its owned active container.
+- No global process-name kills; only Atlas-owned processes/containers are stopped.
+- Default sandbox workloads have no network or host mounts.
+- Use immutable image digests, not `latest` tags.
+- Do not describe execution receipts as verified contributions until independent evidence is reviewed.
+- No public endpoint, customer API sale or payment collection until public control-plane and commercial safeguards are complete.
+
+This reconciliation is additive: the original root roadmap remains byte-for-byte unchanged and continues to be the detailed operational authority for these gates.
+
+
+==============================================================================
+PART 7: docs/DEVLOG.md
+Development log. Last changed 2026-11-11.
+==============================================================================
+
+# Atlas Chat — Development Log
+**Living chronological engineering record**  
+**Last reconstructed:** 8 November 2026
+
+> Evidence discipline: entries distinguish reported actions, staged patch contents, test results and target-machine acceptance. A patch version is not automatically a public product release.
+
+## 2026-11-07 — Project baseline and patch reconciliation
+
+- A source archive upload was recorded with 474 entries verified.
+- The archive was described as containing Python backend/chat, Rust/Tauri desktop, MCP, Dev Engine/sandbox, Atlas Node/Control Plane, Swarm patches, manifests, recovery/merge-review material and tests/release docs.
+- Baseline testing was reported as 17 Python tests passing and 5 failing.
+- Known baseline issues included missing root `docs/atlas-node/GATEWAY-CONTRACT.md`, absent `_post_completion`, child-process leakage after failed MCP handshake, and mismatch between advertised `atlas_list_files` and expected `list_workspace_files`.
+- Root and nested v0.3.1 snapshots were both present; source reconciliation was required before treating either as canonical.
+- Planned order: reconcile patches, repair MCP/process lifecycle, restore gateway contract, run regression and integrate Swarm/Node.
+
+## 2026-11-07 — Atlas Swarm Operations Integration v0.1
+
+- User ran `INSTALL-ATLAS-OPS.ps1` from `Atlas-Swarm-Operations-Integration-v0.1`.
+- Installer reported installation into `atlas-rust-desktop/src-tauri/src/main.rs`, `atlas-rust-desktop/src/App.tsx` and `atlas-rust-desktop/src/atlas-node.css`.
+- Backups recorded: `.atlas-ops-backup-20261107-201111` and `.atlas-ops-backup-20261107-201119`.
+- Installer reported it did not modify existing chat UI, bot definitions, `settings.json`, `data.json` or Python server files.
+- Scope: Operations dashboard foundation, saved-config bot inventory, model/chat/message counts, queue-state visibility, MCP audit-event visibility and periodic polling.
+- Classification: documented installed; not equivalent to a complete distributed swarm execution system.
+
+## 2026-11-07 — Agent Observability v0.1 (staged patch)
+
+- Staged patch described an agent registry, IDs/parent IDs, PID/host/OS/model, current task/stage, heartbeats, stale-agent detection, CPU/memory metrics foundation, structured logs, task/trace/span identifiers, SQLite persistence, SSE activity transport, screenshot storage foundation and Python SDK `agents/atlas_agent_runtime.py`.
+- Staged tests were reported as 16 passing.
+- Installation on the user's Windows working tree was not confirmed.
+- Remaining work: connect real workers, instrument model/tool calls, connect handoffs/failures, integrate Rust Node supervisor, build trace waterfall, live logs/metrics and real desktop/SSH viewing.
+- Important distinction: screenshot capture is not live desktop streaming.
+
+## 2026-11-07 — MCP Fix and Shortcuts Specification v0.1
+
+- Staged contents included MCP handshake cleanup, `docs/atlas-node/GATEWAY-CONTRACT.md` and keyboard-shortcuts specification.
+- MCP smoke test and three MCP monitor integration tests were reported passing in the staged tree.
+- Installation not confirmed.
+- Keyboard shortcuts remained a specification, not a completed UI feature.
+
+## 2026-11-07 — Dev Engine Local Worker v1.3 (staged patch)
+
+- Local model-powered development worker described using OpenAI-compatible llama-swap endpoint `http://127.0.0.1:8080`, default model `coder`.
+- Design included isolated disposable workspace, JSON patch proposals, human review before application, no automatic live-repository writes and no automatic test execution.
+- MCP tools: `dev_local_model_status`, `manager_execute_local`.
+- Remote model endpoints gated by `ATLAS_DEV_ALLOW_REMOTE_LLM=1`.
+- Staged test result reported: 22 tests passed; Python compile checks passed.
+- Windows inference, MCP handshake and production integration were not confirmed.
+
+## 2026-11-07 — Control Plane v0.3.0 / v0.3.1 integration
+
+- Installer reported installation of roadmap/release gates, build scripts, manifests, Control Plane documentation, Docker assets, Rust service, migrations, scheduler-key utility, contribution-verification utility, contract tests and Atlas Node integration tests.
+- Existing differing files were preserved as `.atlas-control-plane-proposed` rather than overwritten. Reported examples included `index.html`, `atlas-rust-desktop/src/App.tsx`, `src-tauri/src/main.rs` and `validation-tests/test_chat_queue.js`.
+- Backup recorded: `.atlas-control-plane-backup-20261107-183856`.
+- Installer reported it preserved `settings.json`, `data.json` and `server.py`.
+- The integration was not considered complete until proposed merges were reviewed and `BUILD-ATLAS.ps1` and target runtime acceptance were run.
+- Control-plane remote workload consent was explicitly not to be enabled before build and security gates.
+
+## 2026-11-07 — Desktop build-sequence v0.3.3 / v0.3.4
+
+- A strict build sequence was prepared: React production build → Rust formatting/check/tests → Tauri bundle; transcript logging and stop-at-first-failure behavior included.
+- One authoring environment lacked Rust/Cargo and could not complete dependency installation; no build success was claimed there.
+- A user-provided Windows log later reported Node 26.13.0, npm 11.20.0, rustc 1.99.1 and cargo 1.99.1.
+- `npm ci --no-audit --no-fund`: PASS; 24 packages added.
+- React production build (`tsc -b && vite build`): PASS.
+- `cargo fmt --all -- --check`: FAIL due to formatting-only diffs in `build.rs`, `evidence.rs`, `main.rs`, `process_supervisor.rs` and `telemetry.rs`.
+- Rust compile/check, Rust tests and Tauri bundle were not reached in that run.
+- Next recorded action: run `cargo fmt --all`, then rerun with `-SkipInstall`.
+
+## 2026-11-07 — Desktop design correction build
+
+- A later design-correction production build was reported successful.
+- Executable size: 12,370,432 bytes.
+- SHA-256: `175516B88D9F250EBD77C2ADAC8E267607B906285BC7270E3AB8FBBA8D7848B4`.
+- NSIS and MSI artifacts were generated.
+- Five nonfatal `unused_mut` warnings were reported.
+- Backup: `backups\\atlas-design-correction-20261108-003247`.
+- This evidence establishes a reported build result for that snapshot, not proof that all later source changes were included or that the installed app is the same binary.
+
+## 2026-11-08 — Swarm worker registration attempt
+
+- Worker registration reported success at `127.0.0.1:8090`.
+- Agent ID recorded: `agt_8abefe98530646ca8a34aa8498803e72`.
+- Shell execution was disabled and workspace configured.
+- Task outcome: 1 failed / 0 completed.
+- Failure details were not known in the recovered record; do not represent this as a successful task execution.
+
+## 2026-11-08 — Rust desktop / launcher and installation integrity
+
+- Engineering handoff recorded the need to prioritize launcher/installer and defer Jinja, Node/Operations UI expansion and drag-drop.
+- Release and installed executable hashes were recorded as different:
+  - Release SHA-256 prefix/suffix: `1CD300...B60C2B`
+  - Installed SHA-256 prefix/suffix: `5FEDED...A24DAD`
+- Atlas was registered twice (NSIS/MSI), both labeled v0.1.0 and pointing to the same install path.
+- Shortcuts bypassed the intended launcher.
+- Runtime project location recorded as `F:` and models at `F:\\models`.
+- A chat source file was restored from a verified pre-polish backup; restored file SHA-256 `688FE8...DCE54`, 130,196 bytes. The damaged version was backed up; Node/Operations were preserved.
+- These details show why installation identity, launcher routing and artifact hashes must be part of the release evidence.
+
+## 2026-11-08 — MCP, queue, UI and knowledge patch evidence
+
+- A validation package reported Python compile checks passing.
+- MCP loop regression tests: 2 passed, covering duplicate-call suppression and exhausted-round-budget behavior.
+- Existing MCP Commander smoke test reported handshake, discovery, execution, verification and path containment passing.
+- Avatar HTTP integration test reported PNG upload HTTP 201, correct content type and byte-identical retrieval; path-traversal bot ID rejected with HTTP 400.
+- Frontend inline JavaScript syntax checks passed.
+- A separate Dev Engine sandbox v1.5 workstream reported 31 unit tests passing. It added host approval-consumption API/CLI bridge, per-run staging copy, strict result schema/identity/consistency validation, bounded output, host-side SHA-256 snapshots, exclusive snapshot creation, audit events and CLI evidence verification.
+- Windows Sandbox launch and guest toolchain execution remained target-machine acceptance tests.
+
+## 2026-11-08 — Current user-reported blockers
+
+- Queue advancement: after removing queued messages, remaining items do not reliably move up / get read by the AI.
+- Conversation navigation: opening a conversation can cancel active generation.
+- Operations navigation: selecting “open this conversation” does not take the user to the Operations page as expected.
+- These are active, user-reported defects. They are not fixed or accepted in this record.
+- User explicitly requested that fixes be end-to-end credible, not speculative or partial.
+
+## 2026-11-08 — Operations selected-task requirements
+
+- User requested selected-task detail view showing created artifacts, full file paths, evidence/workspace, and a “VIEW LIVE FEED” control similar to VNC.
+- Requirement should be delivered without destabilizing Chat or Node.
+- Actual live desktop streaming must not be implied by a screenshot-only implementation.
+
+## Version and iteration register (reconstructed)
+
+| Version / artifact label | Workstream | Evidence classification |
+|---|---|---|
+| Development Cycle / Atomic Chats v2 | Earlier source/reference project | Original project source/reference; not a replacement for current tree |
+| Full Source v0.3.0 | Consolidated Python-era source snapshot | Archive exists in recovered records |
+| Full Source v0.3.1 | Consolidated source snapshot | Archive exists; canonical/current status requires tree comparison |
+| Deep Purple UI v0.3.0 | Rust desktop visual theme | Patch/archive listed; exact current installation not established |
+| Control Plane v0.1.0 | Rust service foundation | Archive listed; integration later iterated |
+| Control Plane merge v0.3.0 | Node/control-plane integration | Installer reported partial merge; proposed files remained |
+| Queue/Rust integration v0.3.1 | Queue, Node and control-plane integration | Patch/archive listed; target runtime acceptance required |
+| Desktop build sequence v0.3.3 | Ordered desktop build workflow | Script archive listed |
+| Desktop build sequence v0.3.4 | Corrected build workflow | Windows user log recorded React pass, Rust fmt check fail |
+| Operations Integration v0.1 | Operations UI foundation | Documented installed |
+| Agent Observability v0.1 | Agent registry and telemetry | Staged; installation unconfirmed |
+| MCP Fix / Shortcuts Spec v0.1 | MCP reliability and shortcut specification | Staged; installation unconfirmed |
+| Dev Engine Local Worker v1.3 | Local development agent | Staged; Windows integration unconfirmed |
+| MCP merged safe overlay v1.5 | MCP/Dev Engine integration | Archive and validation records exist; exact current state requires inspection |
+| Dev Engine sandbox v1.5 | Isolated execution and evidence | 31 staged unit tests reported; Windows Sandbox acceptance pending |
+| UI / avatars / browser import / MCP loop patch | UI and MCP usability/reliability | Staged validation reported; current installation must be verified |
+
+## Ongoing entry template
+
+### YYYY-MM-DD — [Iteration / version / patch]
+- **Request / problem:**
+- **Discussion / decision:**
+- **Scope / files affected:**
+- **Implementation:**
+- **Backup / rollback:**
+- **Targeted tests:**
+- **Regression / integration tests:**
+- **Build / package:**
+- **Runtime acceptance:**
+- **Evidence / hashes:**
+- **Known limitations:**
+- **Next action:**
+
+## Historical completeness warning
+
+This log is reconstructed from available saved handoffs, patch inventories, devlogs, pasted build/test logs and conversation summaries. It is not an exhaustive export of every message, every source diff or every Git commit. Dates and version labels are preserved where available; missing chronology is deliberately not fabricated. Continue by importing the repository's existing DEVLOG/CHANGELOG files, Git history, build logs and patch manifests.
+
+## 2026-11-10 - Remove hard-coded drive paths, run all Python test folders (Claude, WSL, tested)
+
+- `config.py`, `server.py`: `llama_swap_exe` and `llama_swap_config` now default to empty. They were `F:\app-dev\tools\...`. Set them in `settings.local.json`.
+- `app.py`: if they are empty, the start-up error names the two settings. If a model server already runs on the upstream port, nothing changes.
+- `bench.ps1`, `launch.ps1`, `test-models.ps1`: no `F:\` project paths. They use `$PSScriptRoot`. `bench.ps1` needs `-ToolsDir` or `ATLAS_TOOLS_DIR`. NOT run (no PowerShell here).
+- `atlas-rust-desktop/validation-tests/test_mcp_stdio.py`: looked for the commander in the wrong folder. Now uses the shipped backend. 31 tests pass.
+- New `tests/test_no_hardcoded_paths.py` (5 tests). Whole `tests` folder: 82 tests pass. `validation-tests`: 9 pass.
+- `BUILD-ATLAS.ps1`: also runs both `validation-tests` folders. NOT run.
+- Not changed: shipped `settings.json` still holds Jason's `F:\` paths (his own config). Rust `process_supervisor.rs` still reads `llama_swap_exe` from settings.json.
+
+## 2026-11-10 - Delete root duplicates and finished handoffs (Claude, WSL)
+
+- Deleted root copies of the backend (app, server, config, llm, mcp_*, docsearch, book_tools, books, dev_cycle, knowledge_engine, atlas_*, upstream_auth, test_*), root `index.html` and root `src/`. The shipped copy in `atlas-rust-desktop/src-tauri/resources/atlas/` is the only one.
+- Deleted HANDOFF-LOCAL-INTEGRATION, HANDOFF-RECOVERY-REMAINING, HANDOFF-SWARM-FINALIZED, HANDOFF-TODO. Open items moved to HANDOFF-NEXT.md.
+- Backup: `F:\APP-DEV\backups\atlas-duplicates-20261110.tar.gz` (62 entries).
+- `launch.ps1` and `BUILD-ATLAS.ps1` use the shipped folder. Not run (no PowerShell).
+- Tested: tests 82 OK, validation-tests 9 OK, desktop validation-tests 31 OK, `check-bundle.py` passes. Node UI tests not run (no node in WSL).
+
+## 2026-11-10 - Bot drag-to-reorder and queue advance (Claude, WSL)
+
+- `index.html`: the `#bots` list now has one dragover and drop handler. Gaps between bots and the space under the last bot accept drops. The drop uses the nearest bot by pointer position.
+- `index.html`: bot cards and their text are not selectable (`user-select:none` on all children).
+- `index.html`: removing the first queue item while idle and not paused starts the next item.
+- Not run: no node in WSL, so the JS tests did not run. Test in the app: drag a bot to a gap, to the end, to the top. Remove the first queued item.
+- Not done from item 15: keep generation running when another chat opens. `send()` needs a larger change.
+- Only my hunks of `index.html` are committed. Jason's selection CSS, bot colour and state-load guard stay uncommitted in the working file.
+
+## 2026-11-10 - Keep a reply visible when another chat opens (Claude, WSL)
+
+- `index.html`: `send()` already kept streaming when you opened another chat, but the live reply box disappeared from view and the log scrolled in the wrong chat.
+- New `liveGen` ({chatId, box}). `renderLog()` puts the live box back when you return to the generating chat. Scrolling only happens when the box is on screen.
+- On finish, if the chat is open and the box is not on screen, `renderLog()` shows the saved reply.
+- Not run: no node in WSL. Test in the app: send a long prompt, open another chat, come back. Stop must still work. Queue must still advance.
+
+## 2026-11-10 - Make the sidebar Import button clearer (Claude, WSL)
+
+- A user saw "is not valid JSON" while importing a book. That text only comes from the sidebar Import button, which restores a bots and chats backup. The book import (KNOWLEDGE // LIBRARY > + IMPORT SOURCES) was not the cause.
+- `index.html`: button label is now "Import backup". Both error messages say to use KNOWLEDGE // LIBRARY > + IMPORT SOURCES for books and documents.
+- Not run: no node in WSL.
+
+## 2026-11-10 - Delete install.ps1, clean shipped settings.json (Claude, WSL)
+
+- `install.ps1` deleted (old Python installer). `HANDOFF.md` release steps now use `BUILD-ATLAS.ps1` and `build-release.ps1` (Tauri NSIS).
+- Shipped `resources/atlas/settings.json`: removed `data_file`, `llama_swap_exe`, `llama_swap_config` (Jason's C:\ and F:\ paths). Defaults apply.
+- Existing installs keep their own settings: `main.rs` copies the shipped file only when the data folder has none. Release builds use `runtime\llama-swap` inside the install, not these settings.
+- Still hard-coded: `runtime/llama-swap/config.yaml` points at `F:\models\...` (abliterated models). Next: find models by folder.
+
+## 2026-11-10 - Find models on any PC (Claude, WSL)
+
+- New `resources/atlas/model_discovery.py` (stdlib). Keeps the bundled `runtime/llama-swap/config.yaml` when every `-m` file in it exists. Otherwise it scans for `.gguf` files (env `ATLAS_MODELS_DIR`, `<data>/models`, `<install>/models`, `<runtime>/models`) and writes `<data>/llama-swap.generated.yaml`.
+- Roles coder, mentor, assist, tasks map to files by name hints, then by size. Few models: roles share them. Skips `mmproj` files and later shards. No models found: keeps the bundled config.
+- `process_supervisor.rs`: new `discover_llama_config()` runs it with the bundled Python before llama-swap starts. Any failure keeps the bundled config. NOT COMPILED (no Rust in WSL): run `.\build-release.ps1`.
+- `tests/test_model_discovery.py`: 6 tests pass. Your PC: bundled config still wins because `F:\models` exists.
+- Not checked: how llama-swap handles a quoted path with a space on Windows. Test with a models folder that has a space.
+- Still hard-coded: `F_DATA_ROOT = F:\APP-DEV\data\Atlas Chat` in `main.rs` (the "F: only" rule). The app will not start on a PC with no F: drive.
+
+## 2026-11-10 - No F: drive fallback, install folder without capitals or spaces (Claude, WSL)
+
+- `main.rs`: new `data_base()`. F: drive present: `F:\APP-DEV\data\Atlas Chat` (existing data stays). No F: drive: `%LOCALAPPDATA%\atlas-chat\data`. NOT COMPILED.
+- `nsis/f-drive-only.nsh`: default install folder is now `F:\APP-DEV\projects\atlas-chat\app` (was `...\atlas-chat\Atlas Chat`). No F: drive: `%LOCALAPPDATA%\atlas-chat\app`, and the F: checks are skipped. NOT BUILT (no NSIS here).
+- `build-release.ps1`: prints `app\atlas-desktop.exe`. `.gitignore`: added `/app/`.
+- `model_discovery.py`: model paths use forward slashes and double quotes only when they have a space. The `llama-server.exe` path is relative, so the install path never goes into the command. This avoids the llama-swap quoting question. Real test on the PC still needed.
+- An old install at `...\atlas-chat\Atlas Chat` is kept by upgrades (the registry path starts with F:). To move: uninstall, then install. Jason deletes the old folder after checking it.
+- Tests: 114 OK.
+
+## 2026-11-10 - Model paths in the shipped llama-swap config no longer fixed (Claude, WSL)
+
+- `runtime/llama-swap/config.yaml`: the 5 `-m F:\models\...` lines are now `-m {models}/<sub>/<file>.gguf`. All your tuned flags stay.
+- `model_discovery.py`: finds the first models folder that holds all 5 files and writes `<data>/llama-swap.generated.yaml` with `{models}` replaced (mode `bundled-template`). Search order: `ATLAS_MODELS_DIR`, `<data>\models`, `<runtime>\models`, `<install>\models`, and a `models` folder at the root of the data and install drives (your `F:\models` is found this way). Not all files found: it scans for any `.gguf` and generates a config (mode `generated`). Nothing found: mode `none`, the bundled config is used and llama-swap reports the missing file.
+- 3 new tests. Whole `tests` folder: 117 OK. `check-bundle.py` OK. A test checks the shipped config has no `X:` model path.
+- Not run on Windows. Rust is unchanged since the last commit (it already calls `model_discovery.py`).
+
+## 2026-11-11 - Remove last F:\ paths from start scripts (Claude, WSL)
+
+- The three `Start Atlas Chat*.bat` files use `%~dp0` (their own folder) instead of `F:\APP-DEV\projects\atlas-chat`. NOT run (no Windows shell).
+- `get_update.py` message and `test_local_model.py` docstring no longer name the F: folder.
+- `settings.json` still holds the F: llama-swap paths (Jason's own config).
+- `tests`: 126 of 127 pass. `test_mcp_hardening` swarm whitespace test fails before and after this change (swarm text changed in an earlier commit).
+
+
+==============================================================================
+PART 8: docs/EVIDENCE-REGISTER.md
+Evidence register. Last changed 2026-11-09.
+==============================================================================
+
+# Atlas Chat — Technical Evidence Register
+**As of 8 November 2026**
+
+This register prevents a staged patch, passing unit test or generated installer from being described as a fully working product capability.
+
+| Claim / component | Evidence in recovered record | What it does NOT prove | Next proof required |
+|---|---|---|---|
+| Operations dashboard foundation installed | User ran Operations Integration v0.1 installer; installed paths and backups recorded | Full swarm execution or all Operations workflows | Verify current files and test UI against live services |
+| Agent observability exists | Staged patch described registry, telemetry, SQLite, SSE and SDK; 16 tests reported | Patch installed or real workers instrumented | Install/merge review; register actual workers; verify traces and metrics |
+| MCP handshake/tool loop | Smoke and regression tests reported across staged patches | Current production config and all real model/tool calls work | Clean real stdio + HTTP integration and Windows lifecycle tests |
+| Dev Engine local worker | v1.3 staged patch and 22 tests reported | Windows model inference and production integration | Target-machine inference, isolation and approval tests |
+| Dev Engine sandbox | v1.5 workstream and 31 unit tests reported | Windows Sandbox starts and guest toolchain runs | Windows Sandbox acceptance and hostile-input tests |
+| Control Plane integration | Installer reported service files, migrations and tests installed; conflicting files preserved as proposals | All merges reconciled or remote workloads safe | Review proposed files, build, service integration, consent and security review |
+| React frontend build | Windows log reported production build passed | Rust compile, Tauri bundle or installer passed | Full ordered build |
+| Rust/Tauri release | One design-correction executable and NSIS/MSI generation reported | Latest source is included or installed artifact matches release | Compare hashes, version metadata, install path and launch route |
+| Worker registration | Worker registered at localhost:8090 | Work completed; recorded task result was 1 failed / 0 completed | Capture failure reason and complete an actual task |
+| Queue reliability | User reports queue does not advance after removal | Any current fix | Reproduce, add regression tests and runtime verify |
+| Conversation switching | User reports opening conversation can cancel generation | Any current fix | Runtime test active generation while switching/opening chats |
+| Operations navigation | User reports open-conversation action does not navigate correctly | Any current fix | UI end-to-end test from task to Operations |
+| Live desktop view | Screenshot/latest-frame foundation described | Interactive live stream / VNC / SSH | Implement transport and demonstrate live interaction |
+
+## Required release evidence bundle
+
+For every release candidate, retain:
+1. Git commit SHA and branch.
+2. Version manifest with component versions.
+3. Exact installer and executable SHA-256.
+4. Frontend build output.
+5. Rust formatting, check and test logs.
+6. Tauri packaging output.
+7. Installer upgrade and rollback logs.
+8. Target-machine runtime test checklist and results.
+9. Regression results for chat, queue, MCP, process lifecycle and data preservation.
+10. Known issues and release decision.
+
+## Investor proof checklist
+
+- [ ] Repeatable product demo video and live demo script.
+- [ ] Real user interviews and design-partner feedback.
+- [ ] Active users, retention and task completion metrics.
+- [ ] Representative local inference latency and throughput.
+- [ ] Cost comparison using reproducible workload assumptions.
+- [ ] Security threat model and permission boundaries.
+- [ ] Open-source and third-party model licensing review.
+- [ ] Pricing tests and unit economics.
+- [ ] Customer pipeline / LOIs / pilots, if obtained.
+- [ ] Market sizing with cited sources and a clearly defined initial segment.
+- [ ] Funding amount, runway and milestone-linked use of funds.
+
+No user count, revenue, customer contract, partnership, benchmark advantage, market-size figure or funding ask is asserted by this register.
+
+
+==============================================================================
+PART 9: docs/investors/INVESTOR-PITCH-NOTES.md
+Investor pitch notes. Last changed 2026-11-09.
+==============================================================================
+
+# Atlas Chat — Investor Pitch Notes
+**Working fundraising narrative | 8 November 2026**
+
+## One-line description
+Atlas is building a local-first AI desktop platform that connects local models, tools and agent workflows, with a longer-term path toward hybrid and distributed AI infrastructure.
+
+## The problem
+AI access is increasingly powerful, but many workflows remain dependent on centralized services, fragmented tools and opaque agent execution. Users who want local control often have to assemble model servers, interfaces, tools and automation themselves. Teams also need visibility into what agents did, which tools they called and what artifacts they produced.
+
+This is a problem hypothesis. It needs customer interviews and measurable validation.
+
+## The solution
+Atlas aims to provide one coherent desktop experience for:
+- Running and selecting local models.
+- Working with persistent AI conversations.
+- Connecting tools through MCP.
+- Coordinating agent-oriented workflows.
+- Inspecting task state, logs and evidence.
+- Extending toward hybrid and distributed compute where useful.
+
+## Why now
+The product hypothesis is that improving local hardware and open model ecosystems create an opportunity for better local-first AI experiences. Validate this with current sourced market evidence before external circulation.
+
+## Differentiation hypothesis
+Atlas's intended differentiation is the combination of:
+1. Local-first desktop UX.
+2. Model and tool orchestration.
+3. Agent observability and evidence.
+4. A path from a single machine to a coordinated node ecosystem.
+5. A safety-conscious execution model with explicit approval boundaries.
+
+This is a positioning hypothesis, not yet a proven competitive moat. Competitive research and customer testing are required.
+
+## Product status — honest framing
+Atlas has an existing chat/backend foundation and active React/Tauri/Rust desktop work. Historical records include Operations, MCP, Node, Control Plane, Dev Engine, Knowledge and observability workstreams. Some staged test suites and desktop builds have been reported successful. However, the queue advancement, conversation switching and Operations navigation issues reported on 8 November 2026 remain open. Several agent/control-plane patches have staged rather than confirmed production status.
+
+Do not pitch Atlas as a fully released distributed compute network or claim all agent observability features are production complete.
+
+## Business model hypotheses
+- Free/local desktop entry tier.
+- Paid advanced desktop and developer features.
+- Team/enterprise governance and agent observability.
+- Optional hosted APIs or managed coordination.
+- Potential ecosystem/integration revenue.
+- Potential distributed workload coordination only after supply, demand, trust and unit economics are proven.
+
+## Go-to-market hypothesis
+Start with a narrow developer / technical power-user wedge:
+1. Recruit design partners who already run local models.
+2. Solve a painful workflow: reliable local AI + tools + observable task execution.
+3. Measure activation, repeat use, task completion and support burden.
+4. Convert validated workflows into paid individual/team tiers.
+5. Expand toward node coordination only after core product-market fit signals.
+
+## Milestones investors can underwrite
+**Milestone A — Reliable desktop foundation**
+- Queue and conversation lifecycle stable.
+- Clean installer/updater and rollback.
+- MCP loop reliable and auditable.
+- Demonstrable local model workflow.
+
+**Milestone B — Differentiated workflow**
+- Real agent execution telemetry.
+- Artifact/evidence views and trace timeline.
+- Knowledge and developer workflows integrated.
+- Design partners using Atlas repeatedly.
+
+**Milestone C — Commercial validation**
+- Paid pilots or subscriptions.
+- Retention and task-success metrics.
+- Pricing and unit economics.
+- Security and licensing review.
+
+**Milestone D — Platform expansion**
+- Node identity and health.
+- Explicit workload consent.
+- Scheduler and contribution verification.
+- Safe, measurable distributed workload pilots.
+
+## Funding ask
+**Not yet specified.** Determine amount only after defining the next 12–18 month milestones, team requirements, operating costs and runway. Do not invent a number for the deck.
+
+## Investor diligence materials to assemble
+- Product demo.
+- Architecture and security overview.
+- Release/evidence register.
+- Git history and ownership/IP records.
+- Third-party license inventory.
+- Customer discovery summary.
+- Competitive landscape with sources.
+- Pricing and unit economics.
+- Financial model and use of funds.
+- Milestone plan and risk register.
+
+
+==============================================================================
+PART 10: docs/atlas-node/GATEWAY-CONTRACT.md
+Atlas Node gateway contract (a test reads this file). Last changed 2026-11-09.
+==============================================================================
+
+# Atlas Node Gateway Contract v0.2
+
+The desktop client is deliberately a client of the commercial Atlas gateway. Do not expose the existing Atlas Chat localhost API as this service. All non-loopback traffic must use HTTPS.
+
+## Identity and registration
+
+1. `POST /v1/nodes/challenge`
+   - Request: `{ "node_id": "<sha256-hex-of-ed25519-public-key>", "public_key_hex": "<32-byte-ed25519-public-key-hex>" }`
+   - Response: `{ "challenge": "<cryptographically-random-single-use-nonce>", "expires_at_unix": 0 }`
+   - Server stores challenge against the public key for at most 60 seconds, one use only.
+2. `POST /v1/nodes/register`
+   - Request: node_id, public_key_hex, challenge, signature_hex.
+   - Signature is Ed25519 over the exact UTF-8 challenge bytes.
+   - Server recomputes SHA-256(public key), checks challenge ownership/expiry/one-use, then issues a high-entropy revocable node token.
+   - Response: `{ "node_token": "<opaque-secret>" }`.
+
+## Signed node requests
+
+Every authenticated POST uses bearer node token plus:
+
+- `x-atlas-node-id`
+- `x-atlas-timestamp` (Unix seconds)
+- `x-atlas-signature` (Ed25519 signature hex)
+
+Signed bytes are UTF-8:
+
+`{timestamp}.{HTTP_METHOD}.{path}.{lowercase_hex_sha256_of_exact_compact_JSON_body}`
+
+The server must enforce a narrow clock-skew window, one-time/replay protection for mutating operations, body-size limits, token revocation, node status and consent, per-node rate limits, and constant-time token comparison. JSON must be compactly serialized with lexicographically ordered object keys to match serde_json's canonical Value serialization used by the client.
+
+## Node lifecycle and workloads
+
+- `POST /v1/nodes/heartbeat` — signed device status and hardware capacity; heartbeat expiry marks a node unavailable.
+- `POST /v1/workloads/claim` — signed claim request; returns HTTP 204 when no work is available or `{ "workload": <signed envelope> }`.
+- Workload envelope fields: `workload_id`, `image`, `command`, `max_memory_mb`, `max_cpu_percent`, `expires_at_unix`, `nonce`, `signature_hex`.
+- Workload signature is Ed25519 over compact lexicographically ordered JSON of all envelope fields except `signature_hex`, signed by the configured trusted scheduler key.
+- `POST /v1/workloads/complete` — signed request carrying the node-signed execution receipt.
+
+The scheduler must never send arbitrary host paths, mounts, host commands, secrets or network privileges. Images must be immutable SHA-256 digests and separately allowlisted by the device owner. Rejected, expired, untrusted or non-allowlisted jobs must never execute.
+
+## Distributed inference
+
+- `GET /v1/network/status` — public health/capacity summary only; no private node metadata.
+- `POST /v1/inference` — signed, authenticated inference request. The platform chooses compatible online nodes based on model, VRAM/RAM, context size, quantization, queue depth, network latency and node consent. It returns a request/job identifier and a streamable result contract; the initial desktop client currently expects a JSON response. Add a streaming response contract before claiming production streaming support.
+
+The scheduler should support whole-model placement first. Tensor/pipeline splitting across home PCs is a later capability because bandwidth and latency can make it slower than single-node inference.
+
+## Contribution accounting
+
+- `POST /v1/workloads/complete` stores a signed node assertion but must not immediately credit money.
+- A verifier independently validates job assignment, nonce, time window, model/runtime, output or task-specific proof, resource limits and duplicate submission.
+- `POST /v1/contributions/settlement` (server-side signed settlement) records accepted units, rate, adjustments, period, and verifier identity.
+- A client must label locally signed receipts `EXECUTED_UNVERIFIED`. Only a platform-signed settlement response from a pinned trusted verifier key may be displayed as verified/earnings eligible.
+
+A node signature is not proof of correct computation. GPU inference generally needs task-level validation, redundancy/spot checks or other verification before payouts. Do not describe self-reported GPU time as cryptographically proven work.
+
+## Missing platform implementation
+
+These endpoints, database tables, scheduler, inference router, independent verifier, settlement ledger, customer billing and payment processing are not implemented by the desktop package. They are the next server-side workstream. The desktop code does not silently emulate their success.
+
+
+==============================================================================
+PART 11: bench-results.md
+Model benchmark results. Last changed 2026-11-09.
+==============================================================================
+
+⌊‣畈桩極儭敷㍮㘮㌭䈵䄭䈳愭汢瑩牥瑡摥札浧⵬潭敤⵬㑑䭟朮畧⁦⠠〲㘲ㄭⴱ㘰ㄠ㨶㌴ഩ簊 洀漀搀攀氀                          簀       猀椀稀攀 簀     瀀愀爀愀洀猀 簀 戀愀挀欀攀渀搀    簀 渀最氀 簀  渀开挀瀀甀开洀漀攀 簀  昀愀 簀         氀洀 簀            琀攀猀琀 簀                  琀⼀猀 簀ഀ਀簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀ 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀ㨀 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀ㨀 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀ 簀 ⴀⴀ㨀 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀ㨀 簀 ⴀⴀ㨀 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀ㨀 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀ㨀 簀 ⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀⴀ㨀 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀          㠀 簀   ㄀ 簀       渀漀渀攀 簀           瀀瀀㔀㄀㈀ 簀       ㈀㤀㄀⸀㌀　 Ⰰ鈥‥㄀㄀⸀　㠀 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀          㠀 簀   ㄀ 簀       渀漀渀攀 簀           琀最㄀㈀㠀 簀          㤀⸀㜀㈀ Ⰰ鈥‥　⸀㠀　 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀         ㄀㈀ 簀   ㄀ 簀       渀漀渀攀 簀           瀀瀀㔀㄀㈀ 簀       ㈀㌀㐀⸀㜀㐀 Ⰰ鈥‥㄀㌀⸀㈀　 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀         ㄀㈀ 簀   ㄀ 簀       渀漀渀攀 簀           琀最㄀㈀㠀 簀         ㄀㄀⸀㤀㌀ Ⰰ鈥‥　⸀　㈀ 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀         ㄀㘀 簀   ㄀ 簀       渀漀渀攀 簀           瀀瀀㔀㄀㈀ 簀       ㌀　㘀⸀㄀　 Ⰰ鈥‥㠀㘀⸀㤀㜀 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀         ㄀㘀 簀   ㄀ 簀       渀漀渀攀 簀           琀最㄀㈀㠀 簀         ㄀㜀⸀　㜀 Ⰰ鈥‥　⸀㐀㔀 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀         ㈀　 簀   ㄀ 簀       渀漀渀攀 簀           瀀瀀㔀㄀㈀ 簀       㐀　㈀⸀㔀㘀 Ⰰ鈥‥㈀㔀⸀㐀　 簀ഀ਀簀 焀眀攀渀㌀㔀洀漀攀 ㌀㔀䈀⸀䄀㌀䈀 儀㐀开䬀 ⴀ 䴀攀搀椀甀洀 簀  ㈀　⸀㈀㄀ 䜀椀䈀 簀    ㌀㔀⸀㔀㄀ 䈀 簀 嘀甀氀欀愀渀     簀  㤀㤀 簀         ㈀　 簀   ㄀ 簀       渀漀渀攀 簀           琀最㄀㈀㠀 簀         ㈀㜀⸀㄀㌀ Ⰰ鈥‥　⸀㌀㘀 簀ഀ਀਀⌣䠠極畨⵩睑湥⸳ⴶ㔳ⵂ㍁ⵂ扡楬整慲整ⵤ杧汭洭摯汥儭弴⹋杧晵†㈨㈰ⴶㄱ〭‶㘱㐺⤷਍| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa |         lm |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | ---------: | --------------: | -------------------: |
+| qwen35moe 35B.A3B Q4_K - Medium |  20.21 GiB |    35.51 B | Vulkan     |  99 |         24 |   1 |       none |           pp512 |        426.07 ┬▒ 2.70 |
+| qwen35moe 35B.A3B Q4_K - Medium |  20.21 GiB |    35.51 B | Vulkan     |  99 |         24 |   1 |       none |           tg128 |         39.13 ┬▒ 0.29 |
+| qwen35moe 35B.A3B Q4_K - Medium |  20.21 GiB |    35.51 B | Vulkan     |  99 |         28 |   1 |       none |           pp512 |       385.16 ┬▒ 19.14 |
+| qwen35moe 35B.A3B Q4_K - Medium |  20.21 GiB |    35.51 B | Vulkan     |  99 |         28 |   1 |       none |           tg128 |         34.79 ┬▒ 0.40 |
+| qwen35moe 35B.A3B Q4_K - Medium |  20.21 GiB |    35.51 B | Vulkan     |  99 |         32 |   1 |       none |           pp512 |        359.52 ┬▒ 9.39 |
+| qwen35moe 35B.A3B Q4_K - Medium |  20.21 GiB |    35.51 B | Vulkan     |  99 |         32 |   1 |       none |           tg128 |          4.70 ┬▒ 0.03 |

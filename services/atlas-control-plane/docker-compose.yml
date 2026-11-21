@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atlas
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: ${ATLAS_DB_PASSWORD:?Set ATLAS_DB_PASSWORD in .env}
+    volumes:
+      - atlas-control-plane-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas -d atlas"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # No public database port; control plane reaches it on the compose network.
+  control-plane:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://atlas:${ATLAS_DB_PASSWORD}@postgres:5432/atlas
+      ATLAS_ADMIN_KEY: ${ATLAS_ADMIN_KEY:?Set ATLAS_ADMIN_KEY in .env}
+      ATLAS_SCHEDULER_PKCS8_HEX: ${ATLAS_SCHEDULER_PKCS8_HEX:?Set scheduler private key in .env}
+      ATLAS_BIND: 0.0.0.0:8181
+      RUST_LOG: info
+    ports:
+      - "127.0.0.1:8181:8181"
+volumes:
+  atlas-control-plane-db:

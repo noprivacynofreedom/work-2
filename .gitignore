@@ -1,0 +1,59 @@
+data.json
+.webview/
+*.tmp
+__pycache__/
+settings.local.json
+exports/
+
+# Local build and interpreter caches
+**/__pycache__/
+*.py[cod]
+**/node_modules/
+**/target/
+*.tsbuildinfo
+.pytest_cache/
+
+# The installed app
+/Atlas Chat/
+/app/
+
+# Recovered desktop app: generated output, the 1.3 GB bundled Python, and local data stay out of git
+/atlas-rust-desktop/dist/
+/atlas-rust-desktop/src-tauri/gen/
+/atlas-rust-desktop/src-tauri/resources/atlas/runtime/
+/atlas-rust-desktop/src-tauri/resources/atlas/swarm-workspaces/
+/atlas-rust-desktop/src-tauri/resources/atlas/settings.json
+/atlas-rust-desktop/src-tauri/resources/atlas/data.json
+/atlas-rust-desktop/src-tauri/resources/atlas/data/
+/atlas-rust-desktop/src-tauri/resources/atlas/logs/
+/atlas-rust-desktop/src-tauri/resources/atlas/.atlas/
+
+# Local-only folders: never commit (bundled Python copy, tools, backups, logs, app data)
+/runtime/
+/swpr/
+/backups/
+/.atlas/
+/logs/
+/data/
+/build-logs/
+/swarm-workspaces/
+/s.txt
+/atlas-rust-desktop/*.zip
+
+# Build/patch audit output: installers up to 500 MB each, never commit
+/.atlas-patch-audit/
+*-setup.exe
+*.msi
+
+# Nuitka build venv and the compiled-core staging copy (made by compile_core.py)
+/build-tools/
+/atlas-rust-desktop/src-tauri/core-staging/
+
+# Local scratch, reviews, handoffs, and private license/config files
+/LICENSE.local
+/HANDOFF-COMPUTE-SHARING.md
+/REVIEW-*.md
+/mcp_commander_server.txt
+/.claude/
+/swarm-output/
+/swr-user testing/

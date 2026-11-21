@@ -1,0 +1,826 @@
+﻿ATLAS LIVE LIFECYCLE SOURCE SNAPSHOT
+Captured: 2026-11-08T01:56:47.3604330+13:00
+Project: F:\APP-DEV\projects\atlas-chat
+
+============================================================
+FILE: atlas-rust-desktop\src-tauri\src\process_supervisor.rs
+SHA256: 2ED19060B5792F75618D56C53737361BAABA7976264CD7D4F9733AD6B30D6BE2
+============================================================
+
+use std::{
+    fs::{File, OpenOptions},
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    time::Duration,
+};
+
+use serde_json::Value;
+use tokio::{
+    sync::Mutex as AsyncMutex,
+    time::{sleep, Instant},
+};
+
+/// Owns only the exact child processes spawned by this Atlas desktop instance.
+///
+/// The child registry uses a short-lived std mutex so shutdown never needs to
+/// `try_lock()` a Tokio mutex that may be held across an HTTP readiness wait.
+/// Startup itself is serialized separately with an async mutex.
+#[derive(Default)]
+pub struct OwnedChildren {
+    children: Mutex<Vec<Child>>,
+    start_lock: AsyncMutex<()>,
+    stop_requested: AtomicBool,
+    started: AtomicBool,
+}
+
+pub fn project_root() -> PathBuf {
+    std::env::var_os("ATLAS_PROJECT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"F:\APP-DEV\projects\atlas-chat"))
+}
+
+fn port_ready(port: u16) -> bool {
+    let address = format!("127.0.0.1:{port}");
+    address
+        .parse()
+        .ok()
+        .and_then(|addr| {
+            std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(250)).ok()
+        })
+        .is_some()
+}
+
+fn ensure_not_stopping(stop_requested: &AtomicBool) -> Result<(), String> {
+    if stop_requested.load(Ordering::Acquire) {
+        Err("Atlas startup was cancelled because shutdown was requested.".into())
+    } else {
+        Ok(())
+    }
+}
+
+async fn wait_http(
+    url: &str,
+    seconds: u64,
+    stop_requested: &AtomicBool,
+) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let until = Instant::now() + Duration::from_secs(seconds);
+
+    loop {
+        ensure_not_stopping(stop_requested)?;
+        if let Ok(response) = client.get(url).send().await {
+            if response.status().is_success() {
+                return ensure_not_stopping(stop_requested);
+            }
+        }
+        if Instant::now() >= until {
+            return Err(format!("Service did not become ready: {url}"));
+        }
+        sleep(Duration::from_millis(300)).await;
+    }
+}
+
+fn log_file(root: &Path, name: &str) -> Result<File, String> {
+    std::fs::create_dir_all(root.join("logs")).map_err(|e| e.to_string())?;
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("logs").join(name))
+        .map_err(|e| e.to_string())
+}
+
+
+// Windows: prevent console-subsystem child processes from opening a visible console.
+fn hide_console_window(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
+fn spawn_python(root: &Path, script: &Path) -> Result<Child, String> {
+    let stdout = log_file(root, "atlas-server.log")?;
+    let stderr = stdout.try_clone().map_err(|e| e.to_string())?;
+    let mut candidates: Vec<(&str, Vec<String>)> = vec![
+        ("py", vec!["-3".into(), script.display().to_string()]),
+        ("python", vec![script.display().to_string()]),
+    ];
+    #[cfg(not(windows))]
+    {
+        candidates = vec![
+            ("python3", vec![script.display().to_string()]),
+            ("python", vec![script.display().to_string()]),
+        ];
+    }
+
+    let mut last = String::new();
+    for (exe, args) in candidates {
+        let mut command = Command::new(exe);
+        command.args(args)
+            .current_dir(root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(stdout.try_clone().map_err(|e| e.to_string())?))
+            .stderr(Stdio::from(stderr.try_clone().map_err(|e| e.to_string())?));
+        hide_console_window(&mut command);
+        match command.spawn() {
+            Ok(child) => return Ok(child),
+            Err(error) => last = format!("{exe}: {error}"),
+        }
+    }
+
+    Err(format!(
+        "Could not start Python server. Install Python 3 and ensure 'py' or 'python' is on PATH. {last}"
+    ))
+}
+
+impl OwnedChildren {
+    fn register(&self, child: Child) -> Result<(), String> {
+        // Recover a poisoned mutex rather than dropping ownership of a live
+        // child. The registry contains only Child handles created by Atlas.
+        let mut children = self
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        children.push(child);
+        Ok(())
+    }
+
+    /// Serializes startup and rolls back every child started by this attempt if
+    /// any later prerequisite, readiness check, or identity check fails.
+    pub async fn start(&self) -> Result<String, String> {
+        let _start_guard = self.start_lock.lock().await;
+
+        // Startup can be requested by React lifecycle effects, the retry button,
+        // or a future recovery path. Treat it as idempotent for this desktop
+        // instance: never spawn another server after a successful start.
+        if self.started.load(Ordering::Acquire) {
+            return Ok("Atlas services are already running under this desktop instance.".into());
+        }
+
+        self.stop_requested.store(false, Ordering::Release);
+        let result = self.start_inner().await;
+        match result {
+            Ok(message) if !self.stop_requested.load(Ordering::Acquire) => {
+                self.started.store(true, Ordering::Release);
+                Ok(message)
+            }
+            Ok(_) => {
+                self.stop();
+                Err("Atlas startup was cancelled because shutdown was requested.".into())
+            }
+            Err(error) => {
+                // Startup failure must not leave llama-swap or the API orphaned.
+                self.stop();
+                Err(error)
+            }
+        }
+    }
+
+    async fn start_inner(&self) -> Result<String, String> {
+        let root = project_root();
+        let settings_path = root.join("settings.json");
+        let settings: Value = serde_json::from_slice(
+            &tokio::fs::read(&settings_path)
+                .await
+                .map_err(|e| format!("Cannot read {}: {e}", settings_path.display()))?,
+        )
+        .map_err(|e| format!("Invalid settings.json: {e}"))?;
+
+        let upstream = settings
+            .get("upstream_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(8080) as u16;
+        let api = settings
+            .get("server_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(8090) as u16;
+
+        ensure_not_stopping(&self.stop_requested)?;
+
+        if !port_ready(upstream) {
+            let exe = settings
+                .get("llama_swap_exe")
+                .and_then(Value::as_str)
+                .ok_or("settings.json missing llama_swap_exe")?;
+            let config = settings
+                .get("llama_swap_config")
+                .and_then(Value::as_str)
+                .ok_or("settings.json missing llama_swap_config")?;
+            if !Path::new(exe).is_file() {
+                return Err(format!("llama-swap executable not found: {exe}"));
+            }
+            if !Path::new(config).is_file() {
+                return Err(format!("llama-swap config not found: {config}"));
+            }
+
+            let stdout = log_file(&root, "llama-swap.log")?;
+            let stderr = stdout.try_clone().map_err(|e| e.to_string())?;
+            let mut command = Command::new(exe);
+            command.arg("--config")
+                .arg(config)
+                .arg("--listen")
+                .arg(format!("127.0.0.1:{upstream}"))
+                .current_dir(Path::new(exe).parent().unwrap_or(&root))
+                .stdin(Stdio::null())
+                .stdout(Stdio::from(stdout))
+                .stderr(Stdio::from(stderr));
+            hide_console_window(&mut command);
+            let child = command.spawn()
+                .map_err(|e| format!("Could not start llama-swap: {e}"))?;
+            self.register(child)?;
+            wait_http(
+                &format!("http://127.0.0.1:{upstream}/v1/models"),
+                60,
+                &self.stop_requested,
+            )
+            .await?;
+        }
+
+        ensure_not_stopping(&self.stop_requested)?;
+
+        if !port_ready(api) {
+            let script = root.join("server.py");
+            if !script.is_file() {
+                return Err(format!("Atlas server.py missing: {}", script.display()));
+            }
+            self.register(spawn_python(&root, &script)?)?;
+            wait_http(
+                &format!("http://127.0.0.1:{api}/api/health"),
+                20,
+                &self.stop_requested,
+            )
+            .await?;
+        }
+
+        ensure_not_stopping(&self.stop_requested)?;
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let health = client
+            .get(format!("http://127.0.0.1:{api}/api/health"))
+            .send()
+            .await
+            .map_err(|e| format!("Atlas API health check failed on port {api}: {e}"))?;
+        if !health.status().is_success() {
+            return Err(format!(
+                "Port {api} is occupied by a service that did not pass Atlas health verification"
+            ));
+        }
+        let identity: Value = health
+            .json()
+            .await
+            .map_err(|e| format!("Atlas health response was not valid JSON: {e}"))?;
+        if identity.get("server_port").and_then(Value::as_u64) != Some(api as u64)
+            || identity.get("upstream_port").and_then(Value::as_u64) != Some(upstream as u64)
+        {
+            return Err(format!(
+                "Port {api} is occupied by an Atlas API with unexpected configuration; expected server {api} and upstream {upstream}."
+            ));
+        }
+
+        ensure_not_stopping(&self.stop_requested)?;
+        Ok(format!(
+            "Atlas services ready. API :{api}; llama-swap :{upstream}. Only child processes started by this desktop instance are owned by its supervisor."
+        ))
+    }
+
+    /// Stops only processes retained in this instance's child registry.
+    /// This is synchronous and does not silently skip shutdown because another
+    /// async startup task happens to hold a Tokio mutex.
+    pub fn stop(&self) {
+        self.stop_requested.store(true, Ordering::Release);
+        self.started.store(false, Ordering::Release);
+        // Recover the registry even if a previous panic poisoned the mutex;
+        // skipping cleanup would violate the owned-process lifecycle contract.
+        let mut children = self
+            .children
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for child in children.iter_mut().rev() {
+            if child.try_wait().ok().flatten().is_none() {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+        children.clear();
+    }
+}
+
+
+============================================================
+FILE: atlas-rust-desktop\src-tauri\src\main.rs
+SHA256: DE56D42280CB6A9872A630A4A097F324202DDACD9E7CA9C3E472CAB0ACAD1D29
+============================================================
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod process_supervisor;
+mod telemetry;
+mod evidence;
+mod atlas_node;
+
+use serde::Serialize;
+use tokio::sync::Mutex;
+use tauri::{Manager, State};
+use std::{path::PathBuf, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+
+#[derive(Default)]
+struct RuntimeState { children: Mutex<process_supervisor::OwnedChildren>, shutdown_started: AtomicBool, shutdown_complete: AtomicBool }
+struct NodeState { manager: Arc<atlas_node::NodeManager> }
+impl NodeState { fn new() -> Self { let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).map(|p| p.join("Atlas").join("Node")).or_else(|| std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(PathBuf::from).map(|p| p.join(".local").join("share"))).map(|p| p.join("Atlas").join("Node"))).unwrap_or_else(|| PathBuf::from("atlas-node-data")); Self { manager: Arc::new(atlas_node::NodeManager::new(root)) } } }
+#[derive(Serialize)]
+struct Health { atlas_api: bool, llama_swap: bool, atlas_api_detail: String, llama_detail: String }
+
+#[tauri::command]
+async fn health_check() -> Health {
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(2)).build().unwrap();
+    let atlas = client.get("http://127.0.0.1:8090/api/health").send().await;
+    let swap = client.get("http://127.0.0.1:8080/v1/models").send().await;
+    Health {
+        atlas_api: atlas.as_ref().is_ok_and(|r| r.status().is_success()),
+        llama_swap: swap.as_ref().is_ok_and(|r| r.status().is_success()),
+        atlas_api_detail: atlas.map(|r| format!("HTTP {}", r.status())).unwrap_or_else(|e| e.to_string()),
+        llama_detail: swap.map(|r| format!("HTTP {}", r.status())).unwrap_or_else(|e| e.to_string()),
+    }
+}
+#[tauri::command]
+fn system_metrics() -> telemetry::SystemMetrics { telemetry::snapshot() }
+
+#[tauri::command]
+async fn local_ops_snapshot() -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build().map_err(|e| e.to_string())?;
+    let state = client.get("http://127.0.0.1:8090/api/state").send().await.map_err(|e| format!("Atlas state API unavailable: {e}"))?;
+    if !state.status().is_success() { return Err(format!("Atlas state API returned HTTP {}", state.status())); }
+    let app_state = state.json::<serde_json::Value>().await.map_err(|e| format!("Atlas state JSON invalid: {e}"))?;
+    let audit = client.get("http://127.0.0.1:8090/api/mcp/audit").send().await;
+    let mcp_events = match audit { Ok(r) if r.status().is_success() => r.json::<serde_json::Value>().await.unwrap_or_else(|_| serde_json::json!({"events":[]})), _ => serde_json::json!({"events":[]}) };
+    Ok(serde_json::json!({"state":app_state,"mcp_audit":mcp_events,"captured_at_unix":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}))
+}
+#[tauri::command]
+async fn start_legacy_services(state: State<'_, RuntimeState>) -> Result<String, String> {
+    if state.shutdown_started.load(Ordering::Acquire) {
+        return Err("Atlas is shutting down; refusing to start new services".into());
+    }
+    let mut guard = state.children.lock().await;
+    if state.shutdown_started.load(Ordering::Acquire) {
+        return Err("Atlas is shutting down; refusing to start new services".into());
+    }
+    guard.start().await
+}
+#[tauri::command]
+async fn stop_owned_services(state: State<'_, RuntimeState>) -> Result<String, String> {
+    let mut guard = state.children.lock().await;
+    guard.stop();
+    Ok("Stopped only Atlas-owned child processes.".into())
+}
+#[tauri::command]
+fn record_tool_result(tool: String, ok: bool, summary: String) -> evidence::EvidenceRecord {
+    evidence::record_execution(&tool, ok, &summary)
+}
+
+
+#[tauri::command]
+fn node_status(state: State<'_, NodeState>) -> Result<atlas_node::NodeStatus, String> { state.manager.status() }
+#[tauri::command]
+fn node_config_view(state: State<'_, NodeState>) -> Result<atlas_node::NodeConfigView, String> { state.manager.config_view() }
+#[tauri::command]
+fn node_identity(state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.public_identity() }
+#[tauri::command]
+fn node_set_enabled(enabled: bool, state: State<'_, NodeState>) -> Result<atlas_node::NodeStatus, String> { state.manager.set_enabled(enabled) }
+#[tauri::command]
+fn node_update_policy(allow_remote_workloads: bool, allow_networked_inference: bool, max_cpu_percent: u8, max_memory_mb: u64, state: State<'_, NodeState>) -> Result<atlas_node::NodeStatus, String> { state.manager.update_policy(allow_remote_workloads, allow_networked_inference, max_cpu_percent, max_memory_mb) }
+#[tauri::command]
+fn node_configure(gateway_url: String, ollama_url: String, trusted_scheduler_key_hex: String, allowed_images: Vec<String>, state: State<'_, NodeState>) -> Result<atlas_node::NodeStatus, String> { let mut c=state.manager.config_for_ui()?; let next_gateway=gateway_url.trim_end_matches('/').to_string(); if c.gateway_url!=next_gateway { c.node_token.clear(); } c.gateway_url=next_gateway; c.ollama_url=ollama_url.trim_end_matches('/').to_string(); c.trusted_scheduler_key_hex=trusted_scheduler_key_hex.trim().to_string(); c.allowed_images=allowed_images.into_iter().map(|v|v.trim().to_string()).filter(|v|!v.is_empty()).collect(); state.manager.save_config(c)?; state.manager.status() }
+#[tauri::command]
+async fn node_register(state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.register().await }
+#[tauri::command]
+async fn node_network_status(state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.network_status().await }
+#[tauri::command]
+async fn node_submit_inference(model: String, prompt: String, max_tokens: u32, state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.submit_inference(model,prompt,max_tokens).await }
+#[tauri::command]
+fn node_execute_workload(workload: atlas_node::WorkloadEnvelope, state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.execute_signed_workload(workload) }
+#[tauri::command]
+fn node_contribution_ledger(state: State<'_, NodeState>) -> serde_json::Value { state.manager.ledger() }
+#[tauri::command]
+async fn node_local_models(state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.local_models().await }
+#[tauri::command]
+async fn node_benchmark_local(model: String, prompt: String, state: State<'_, NodeState>) -> Result<serde_json::Value, String> { state.manager.benchmark_local(model,prompt).await }
+
+#[tauri::command]
+async fn ops_api_request(method: String, path: String, payload: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
+    if !path.starts_with("/api/ops/") || path.contains("..") || path.contains('\\') { return Err("Only local Atlas operations API paths are allowed".into()); }
+    let method = method.to_uppercase();
+    if method != "GET" && method != "POST" { return Err("Only GET and POST are supported".into()); }
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().map_err(|e| e.to_string())?;
+    let url = format!("http://127.0.0.1:8090{}", path);
+    let request = if method == "GET" { client.get(url) } else { client.post(url).json(&payload.unwrap_or_else(|| serde_json::json!({}))) };
+    let response = request.send().await.map_err(|e| format!("Atlas operations API unavailable: {e}"))?;
+    let status = response.status();
+    let body = response.json::<serde_json::Value>().await.map_err(|e| format!("Invalid operations API response: {e}"))?;
+    if !status.is_success() { return Err(format!("Atlas operations API HTTP {}: {}", status, body)); }
+    Ok(body)
+}
+
+fn main() {
+    tauri::Builder::default()
+        .manage(RuntimeState::default())
+        .manage(NodeState::new())
+        .setup(|app| { let manager = app.state::<NodeState>().manager.clone(); let hardware_manager = manager.clone(); tauri::async_runtime::spawn(async move { manager.run_agent_loop().await; }); tauri::async_runtime::spawn(async move { hardware_manager.run_hardware_discovery().await; }); Ok(()) })
+        .invoke_handler(tauri::generate_handler![health_check, system_metrics, local_ops_snapshot, start_legacy_services, stop_owned_services, record_tool_result, node_status, node_config_view, node_identity, node_set_enabled, node_update_policy, node_configure, node_register, node_network_status, node_submit_inference, node_execute_workload, node_contribution_ledger, node_local_models, node_benchmark_local, ops_api_request])
+        .build(tauri::generate_context!())
+        .expect("error while building Atlas")
+        .run(|app, event| {
+            match event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    let runtime = app.state::<RuntimeState>();
+                    // Prevent the first close request until the owned children have stopped.
+                    // Once shutdown_complete is set, allow the programmatic exit through.
+                    if !runtime.shutdown_complete.load(Ordering::Acquire) {
+                        api.prevent_exit();
+                    }
+                    if !runtime.shutdown_complete.load(Ordering::Acquire) && runtime.shutdown_started.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            handle.state::<NodeState>().manager.shutdown();
+                            let state = handle.state::<RuntimeState>();
+                            let mut children = state.children.lock().await;
+                            children.stop();
+                            drop(children);
+                            state.shutdown_complete.store(true, Ordering::Release);
+                            drop(state);
+                            handle.exit(0);
+                        });
+                    }
+                }
+                tauri::RunEvent::Exit => {
+                    // Last-resort exact-handle cleanup if the host forces process exit.
+                    app.state::<NodeState>().manager.shutdown();
+                    if let Ok(mut children) = app.state::<RuntimeState>().children.try_lock() { children.stop(); }
+                }
+                _ => {}
+            }
+        });
+}
+
+
+============================================================
+FILE: agents\atlas_agent_runtime.py
+SHA256: BBAE86BDD7FCEA81E5E40C8B86A2F2B583AF75F3B2134A5A6A9A040534146F54
+============================================================
+
+"""Atlas Swarm worker SDK: authenticated registration, task polling and result reporting.
+Agents provide an execute(task) callback; this module owns only its own HTTP loop.
+"""
+from __future__ import annotations
+import json, platform, socket, threading, time, urllib.error, urllib.request, uuid
+
+class AtlasAgent:
+    def __init__(self, base_url: str, name: str, execute, model: str = "", metadata=None,
+                 poll_interval: float = 2.0, heartbeat_interval: float = 10.0,
+                 accepted_task_types=None):
+        self.base_url=base_url.rstrip("/"); self.name=name; self.execute=execute
+        self.model=model; self.metadata=metadata or {}; self.poll_interval=max(.5,float(poll_interval))
+        self.heartbeat_interval=max(3.0,float(heartbeat_interval)); self.agent_id=None; self.token=None
+        if accepted_task_types is not None and (not isinstance(accepted_task_types,list) or not accepted_task_types or any(not isinstance(x,str) or not x.strip() or len(x)>80 for x in accepted_task_types)):
+            raise ValueError("accepted_task_types must be a non-empty list of strings (1-80 characters)")
+        self.accepted_task_types=list(dict.fromkeys(x.strip() for x in accepted_task_types)) if accepted_task_types is not None else None
+        self._stop=threading.Event(); self._thread=None; self._last_heartbeat=0.0
+    def _request(self,path,payload=None,auth=False):
+        data=None if payload is None else json.dumps(payload,ensure_ascii=False).encode()
+        headers={"Content-Type":"application/json"}
+        if auth and self.token: headers["Authorization"]="Bearer "+self.token
+        req=urllib.request.Request(self.base_url+path,data=data,headers=headers,method="GET" if payload is None else "POST")
+        with urllib.request.urlopen(req,timeout=20) as r: return json.loads(r.read().decode("utf-8"))
+    def register(self):
+        result=self._request("/api/ops/agents/register",{"name":self.name,"host":socket.gethostname(),"platform":platform.platform(),"pid":__import__('os').getpid(),"model":self.model,"metadata":self.metadata})
+        self.agent_id=result["agent_id"]; self.token=result["token"]; return result
+    def heartbeat(self,status="online",task_id=None,stage=None):
+        if not self.agent_id: raise RuntimeError("Agent is not registered")
+        return self._request(f"/api/ops/agents/{self.agent_id}/heartbeat",{"status":status,"task_id":task_id,"task_stage":stage,"metrics":{}},True)
+    def event(self,kind,message,details=None,task_id=None,level="info",trace_id=None):
+        return self._request(f"/api/ops/agents/{self.agent_id}/events",{"kind":kind,"message":message,"details":details or {},"task_id":task_id,"level":level,"trace_id":trace_id},True)
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                now=time.monotonic()
+                if now-self._last_heartbeat>=self.heartbeat_interval:
+                    self.heartbeat(); self._last_heartbeat=now
+                claim_payload={"lease_seconds":120}
+                if self.accepted_task_types is not None:
+                    claim_payload["task_types"]=self.accepted_task_types
+                claimed=self._request(f"/api/ops/agents/{self.agent_id}/tasks/claim",claim_payload,True)
+                task=claimed.get("task")
+                if not task: self._stop.wait(self.poll_interval); continue
+                tid=task["task_id"]
+                trace_id=task.get("trace_id")
+                try:
+                    self.heartbeat("busy",tid,"executing")
+                    result=self.execute(task)
+                    body={"status":"completed","result":result if isinstance(result,dict) else {"value":result}}
+                except Exception as exc:
+                    body={"status":"failed","error":f"{type(exc).__name__}: {exc}","result":{}}
+                body["trace_id"] = trace_id
+                self._request(f"/api/ops/agents/{self.agent_id}/tasks/{tid}/result",body,True)
+                self.heartbeat("online")
+            except Exception as exc:
+                try: self.event("agent.worker_error",str(exc),level="error")
+                except Exception: pass
+                self._stop.wait(min(10,self.poll_interval*2))
+    def start(self):
+        if self._thread and self._thread.is_alive(): return self
+        if not self.agent_id: self.register()
+        self._stop.clear(); self._thread=threading.Thread(target=self._run,name=f"atlas-agent-{self.name}",daemon=True); self._thread.start(); return self
+    def stop(self,timeout=5):
+        self._stop.set()
+        if self._thread: self._thread.join(timeout)
+        try: self.heartbeat("offline")
+        except Exception: pass
+
+
+============================================================
+FILE: agents\atlas_programming_worker.py
+SHA256: 254DE0A123CD9364B9966D543F1980368F88C123C3C9C3298DA3D7DE80CC2B6A
+============================================================
+
+#!/usr/bin/env python3
+"""Atlas Swarm Programming Worker.
+
+Consumes `programming` tasks from the Atlas Swarm API and writes generated
+project files beneath a locally configured workspace root. It never executes
+commands received from the server.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+MAX_FILES = 250
+MAX_FILE_BYTES = 2 * 1024 * 1024
+MAX_TOTAL_BYTES = 20 * 1024 * 1024
+MARKER = ".atlas-swarm-task.json"
+
+
+def _safe_component(value: str) -> str:
+    value = str(value or "").strip()
+    value = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip(".-_")
+    if not value or value in {".", ".."}:
+        raise ValueError("project_name must contain letters or numbers")
+    return value[:80]
+
+
+def _safe_relative_path(value: str) -> Path:
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw or raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
+        raise ValueError(f"File path must be relative: {value!r}")
+    parts = raw.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(f"Unsafe relative file path: {value!r}")
+    if any(":" in part for part in parts):
+        raise ValueError(f"Invalid file path component: {value!r}")
+    return Path(*parts)
+
+
+def _normalise_files(value: Any) -> list[tuple[Path, bytes]]:
+    if isinstance(value, dict):
+        entries = [{"path": k, "content": v} for k, v in value.items()]
+    elif isinstance(value, list):
+        entries = value
+    else:
+        raise ValueError("payload.files must be an object or a list of {path, content}")
+
+    if not entries or len(entries) > MAX_FILES:
+        raise ValueError(f"Provide between 1 and {MAX_FILES} files")
+
+    result: list[tuple[Path, bytes]] = []
+    seen: set[str] = set()
+    total = 0
+    for item in entries:
+        if not isinstance(item, dict) or not isinstance(item.get("content"), str):
+            raise ValueError("Each file requires string fields: path and content")
+        rel = _safe_relative_path(item.get("path"))
+        key = rel.as_posix().casefold()
+        if key == MARKER.casefold() or key in seen:
+            raise ValueError(f"Duplicate or reserved file path: {rel.as_posix()}")
+        seen.add(key)
+        data = item["content"].encode("utf-8")
+        if len(data) > MAX_FILE_BYTES:
+            raise ValueError(f"{rel.as_posix()} exceeds the 2 MiB per-file limit")
+        total += len(data)
+        if total > MAX_TOTAL_BYTES:
+            raise ValueError("Task exceeds the 20 MiB total output limit")
+        result.append((rel, data))
+    return result
+
+
+def _atomic_write(destination: Path, data: bytes) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Refuse symlinks anywhere in the destination chain.
+    current = destination.parent
+    while current != current.parent:
+        if current.is_symlink():
+            raise ValueError(f"Refusing to write through symlink: {current}")
+        current = current.parent
+    if destination.exists() and destination.is_symlink():
+        raise ValueError(f"Refusing to overwrite symlink: {destination}")
+    fd, temp_name = tempfile.mkstemp(prefix=".atlas-write-", dir=str(destination.parent))
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_name, destination)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def execute_programming_task(task: dict[str, Any], workspace_root: Path) -> dict[str, Any]:
+    if not isinstance(task, dict):
+        raise ValueError("Swarm task must be an object")
+    task_type = str(task.get("task_type") or task.get("type") or "")
+    if task_type != "programming":
+        raise ValueError(f"Unsupported task type: {task_type!r}; this worker accepts 'programming'")
+
+    payload = task.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("Programming task payload must be an object")
+
+    task_id = str(task.get("task_id") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", task_id):
+        raise ValueError("Task is missing a valid task_id")
+
+    project_name = _safe_component(payload.get("project_name") or "atlas-programming-task")
+    task_folder = f"{project_name}-{task_id[-12:]}"
+    root = workspace_root.expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    if root.is_symlink():
+        raise ValueError("Workspace root cannot be a symlink")
+
+    target = (root / task_folder).resolve()
+    if target.parent != root:
+        raise ValueError("Resolved task folder escaped the configured workspace root")
+
+    marker = target / MARKER
+    if target.exists():
+        if not marker.is_file():
+            raise FileExistsError(f"Refusing to reuse existing folder without Atlas task marker: {target}")
+        existing = json.loads(marker.read_text(encoding="utf-8"))
+        if existing.get("task_id") != task_id:
+            raise FileExistsError(f"Task folder belongs to a different task: {target}")
+    else:
+        target.mkdir(parents=False, exist_ok=False)
+
+    files = _normalise_files(payload.get("files"))
+    written = []
+    digest = hashlib.sha256()
+    for relative, data in files:
+        destination = target / relative
+        resolved_parent = destination.parent.resolve()
+        if resolved_parent != target and target not in resolved_parent.parents:
+            raise ValueError(f"File path escaped task folder: {relative}")
+        _atomic_write(destination, data)
+        digest.update(relative.as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        written.append({"path": relative.as_posix(), "bytes": len(data)})
+
+    manifest = {
+        "task_id": task_id,
+        "project_name": project_name,
+        "created_by": "atlas-swarm-programming-worker",
+        "files": written,
+        "sha256": digest.hexdigest(),
+        "updated_at": time.time(),
+    }
+    _atomic_write(marker, json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "workspace": str(target),
+        "files_written": len(written),
+        "total_bytes": sum(item["bytes"] for item in written),
+        "sha256": manifest["sha256"],
+        "executed_commands": 0,
+    }
+
+
+def self_test() -> int:
+    import shutil
+    import uuid
+
+    root = Path(tempfile.gettempdir()) / f"atlas-swarm-worker-test-{uuid.uuid4().hex[:8]}"
+    try:
+        result = execute_programming_task(
+            {
+                "task_id": "tsk_selftest_000000000001",
+                "task_type": "programming",
+                "payload": {
+                    "project_name": "first-run-check",
+                    "files": [
+                        {"path": "src/hello.py", "content": 'print("Atlas Swarm OK")\n'},
+                        {"path": "README.md", "content": "# Atlas Swarm worker self-test\n"},
+                    ],
+                },
+            },
+            root,
+        )
+        expected = root / "first-run-check-000000000001" / "src" / "hello.py"
+        assert expected.is_file()
+        assert expected.read_text(encoding="utf-8") == 'print("Atlas Swarm OK")\n'
+        print(json.dumps(result, indent=2))
+        print("SELF-TEST PASSED")
+        return 0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Atlas Swarm programming worker")
+    parser.add_argument("--server", default="http://127.0.0.1:8090", help="Atlas API base URL")
+    parser.add_argument("--workspace-root", default="", help="Parent directory for generated project folders")
+    parser.add_argument("--name", default="atlas-programming-worker")
+    parser.add_argument("--poll-interval", type=float, default=2.0)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
+
+    # In a frozen PyInstaller build __file__ points into the temporary extraction
+    # directory. Anchor the default workspace beside the executable instead.
+    runtime_root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
+    workspace = Path(args.workspace_root).expanduser() if args.workspace_root else runtime_root / "swarm-workspaces"
+    workspace.mkdir(parents=True, exist_ok=True)
+    workspace = workspace.resolve()
+
+    def execute(task: dict[str, Any]) -> dict[str, Any]:
+        return execute_programming_task(task, workspace)
+
+    try:
+        from atlas_agent_runtime import AtlasAgent
+    except ImportError:
+        from agents.atlas_agent_runtime import AtlasAgent
+
+    agent = AtlasAgent(
+        base_url=args.server,
+        name=args.name,
+        execute=execute,
+        model="atlas-programming-worker",
+        metadata={
+            "worker_type": "programming",
+            "workspace_root": str(workspace),
+            "writes_files": True,
+            "executes_remote_commands": False,
+            "protocol": "atlas-swarm-v1",
+        },
+        poll_interval=args.poll_interval,
+        heartbeat_interval=10.0,
+        accepted_task_types=["programming"],
+    )
+    print(f"Atlas Swarm Programming Worker")
+    print(f"Server: {args.server}")
+    print(f"Workspace root: {workspace}")
+    print("Mode: programming tasks; file writes only; remote shell execution disabled")
+    try:
+        registration = agent.register()
+        print(f"Registered agent: {registration.get('agent_id')}")
+        agent.start()
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopping worker...")
+        agent.stop()
+        return 0
+    except Exception as exc:
+        print(f"Worker startup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        try:
+            agent.stop()
+        except Exception:
+            pass
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

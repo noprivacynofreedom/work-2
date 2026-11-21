@@ -1,0 +1,25 @@
+﻿{
+    "completed_utc":  "2026-11-08T05:22:39.5000601Z",
+    "project_root":  "F:\\APP-DEV\\projects\\atlas-chat",
+    "git_branch":  "feat/default-prompt",
+    "backup_directory":  "F:\\APP-DEV\\projects\\atlas-chat\\backups\\documentation-integration-20261108-182239",
+    "package_sha256":  "40F16FC1FF8A5AD7BB0F0E713D589B875EFB86C8D300ABD5B13A6DFB8D2F5B8C",
+    "installed_file_sha256":  {
+                                  "README.md":  "65EE1D92CE05DB0BDBFC48ECAC39ED616CCC85A3243419DB8FA02FFEB156985B",
+                                  "docs/PROJECT-MASTER.md":  "E68C920345946D937797F2F9FFFBF6B63D107F83C4BF04AFB6D6B723C0815DBE",
+                                  "docs/DEVLOG.md":  "3A5E0EEC7E67E8DA030E7BDD26764170FBC36B6072A9563D235F0B76D02D28E7",
+                                  "docs/EVIDENCE-REGISTER.md":  "5F2409B4A0CA46B53EC8C18652D9A7D25C63E04C32EA9BE48008441EFF0680CC",
+                                  "docs/investors/INVESTOR-PITCH-NOTES.md":  "547B2196E1E6A04D34D222F5A5281B64233DC42DA5248F26FB5BB3E911139DF6",
+                                  "docs/investors/Atlas-Chat-Investor-Pitch.pptx":  "EC838C5B2AFA93E7576A1996EAAA32839A49EF937A1A2D688763C3D81133356D"
+                              },
+    "verification":  {
+                         "pptx_openxml_structure_valid":  true,
+                         "branch_unchanged":  true,
+                         "copied_file_hashes_match_package":  true,
+                         "existing_roadmap_preserved":  true,
+                         "preexisting_git_status_entries_preserved":  true,
+                         "protected_source_and_config_hashes_unchanged":  true,
+                         "all_destination_files_present":  true,
+                         "existing_docs_preserved":  true
+                     }
+}

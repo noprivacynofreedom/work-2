@@ -1,0 +1,38 @@
+services:
+  atlas-coder-sandbox-live:
+    build:
+      context: .
+      args:
+        # Docker Desktop copies your Windows proxy into every build. Inside the build, apt then fails with
+        # "502 Bad Gateway" (a running container has no proxy and downloads fine). Empty values switch the
+        # proxy off for the BUILD only. Nothing else changes.
+        HTTP_PROXY: ""
+        HTTPS_PROXY: ""
+        http_proxy: ""
+        https_proxy: ""
+        NO_PROXY: ""
+        no_proxy: ""
+    image: atlas-coder-sandbox:local
+    container_name: atlas-coder-sandbox-live
+    restart: unless-stopped
+    ports:
+      # 127.0.0.1 only: nobody else on your network can reach the desktop.
+      - "127.0.0.1:6080:80"
+    environment:
+      RESOLUTION: "1280x720"      # smaller screen = less CPU for VNC
+      VNC_PASSWORD: "${SANDBOX_VNC_PASSWORD:?set SANDBOX_VNC_PASSWORD in .env}"
+    volumes:
+      - ./workspace:/workspace
+    # Limits: one agent cannot use your whole PC.
+    cpus: 2
+    mem_limit: 4g
+    pids_limit: 512
+    shm_size: "1gb"               # Chrome crashes with the 64 MB default
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:80/',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

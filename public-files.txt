@@ -1,0 +1,23 @@
+# Files that export_public.py copies to the public ASM repo.
+# Glob patterns, relative to the repo root ("*" also matches "/"). A line that starts with "!" excludes.
+# Only files that git tracks are copied. core-files.txt and the secret list in export_public.py always win.
+
+atlas-rust-desktop/*
+!atlas-rust-desktop/*BACKUP*
+!atlas-rust-desktop/*.patch
+!atlas-rust-desktop/src-tauri/resources/atlas/test_*
+
+build-release.ps1
+build-progress.ps1
+sync-live.ps1
+check-bundle.py
+compile_core.py
+core-files.txt
+settings.example.json
+requirements-desktop.txt
+requirements-knowledge.txt
+.gitignore
+atlas-chat.ico
+atlas-logo.png
+atlas-mark.png
+docs/screenshots/*

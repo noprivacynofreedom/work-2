@@ -1,0 +1,5 @@
+{
+  "name": "Atlas Chat",
+  "description": "Local-first AI workbench with opt-in Odysseus modules: Optional Module Registry, Blind Compare Mode, Swarm Deep Research, and Hardware-Aware Model Cookbook.",
+  "requestFramePermissions": []
+}
