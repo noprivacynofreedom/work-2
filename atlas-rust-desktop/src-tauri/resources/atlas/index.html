@@ -2500,8 +2500,72 @@ function swarmGroups(){
 const LOG_PAGE_SIZE = 40;
 const logVisibleCount = Object.create(null);
 let logBatchFrag = null;
+let renderingHistory = false;
 let lastChatsRenderKey = "";
 let archivedChatsOpen = false;
+function chatLastTime(c){
+  const msgs = (c && c.messages) || [];
+  const last = msgs.length ? msgs[msgs.length - 1] : null;
+  return Number((last && last.at) || c?.updatedAt || c?.createdAt || 0);
+}
+function chatGroupLabel(ts, todayStart){
+  if (!ts || ts >= todayStart) return "TODAY";
+  if (ts >= todayStart - 86400000) return "YESTERDAY";
+  return "EARLIER";
+}
+function chatMatchesQuery(c, q){
+  if (!q) return true;
+  if (String(c.title || "").toLowerCase().includes(q)) return true;
+  return (c.messages || []).some(m => String(m && m.content || "").toLowerCase().includes(q));
+}
+function makeGroupHdr(label, count){
+  const li = document.createElement("li"); li.className = "chat-group-hdr";
+  li.innerHTML = `<span>${esc(label)}</span><span class="cnt">${count}</span>`;
+  return li;
+}
+function fmtShortChatTime(ts){
+  if (!ts) return "";
+  const d = new Date(ts), now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+function makeChatRowEl(c){
+  const li = document.createElement("li");
+  li.className = "chat-row" + (c.id === S.chat ? " active" : "") + (c.pinned ? " pinned" : "") + (c.archived ? " archived" : "");
+  const msgs = c.messages || [];
+  const last = msgs.length ? msgs[msgs.length - 1] : null;
+  const preview = last ? String(last.content || "").replace(/\s+/g, " ").trim().slice(0, 72) : "Empty chat";
+  const ts = chatLastTime(c);
+  const openBtn = document.createElement("button"); openBtn.type = "button"; openBtn.className = "open";
+  openBtn.innerHTML = `<span class="chat-row-top"><span class="chat-row-title">${esc(c.title || "New chat")}</span>${ts ? `<span class="chat-row-time">${esc(fmtShortChatTime(ts))}</span>` : ""}</span><span class="chat-row-preview">${esc(preview)}</span>`;
+  openBtn.onclick = () => openChatRow(c);
+  const pinBtn = document.createElement("button"); pinBtn.type = "button"; pinBtn.className = "pin";
+  pinBtn.title = c.pinned ? "Unpin chat" : "Pin chat"; pinBtn.setAttribute("aria-label", pinBtn.title);
+  pinBtn.textContent = "★";
+  pinBtn.onclick = e => { e.stopPropagation(); c.pinned = !c.pinned; save(); lastChatsRenderKey = ""; renderChats(); };
+  const archBtn = document.createElement("button"); archBtn.type = "button"; archBtn.className = "arch";
+  archBtn.title = c.archived ? "Unarchive chat" : "Archive chat"; archBtn.setAttribute("aria-label", archBtn.title);
+  archBtn.textContent = c.archived ? "↩" : "▣";
+  archBtn.onclick = e => { e.stopPropagation(); c.archived = !c.archived; if (c.archived) c.pinned = false; save(); lastChatsRenderKey = ""; renderChats(); };
+  const delBtn = document.createElement("button"); delBtn.type = "button"; delBtn.className = "del";
+  delBtn.title = "Delete chat"; delBtn.setAttribute("aria-label", "Delete chat " + (c.title || ""));
+  delBtn.textContent = "×";
+  delBtn.onclick = e => {
+    e.stopPropagation();
+    S.chats = S.chats.filter(x => x.id !== c.id);
+    if (S.chat === c.id) {
+      const next = S.chats.find(x => x.botId === S.bot && !x.swarmRun) || S.chats[0];
+      if (next) { S.chat = next.id; S.bot = next.botId; }
+      else { const fresh = { id: uid(), botId: S.bot, title: "New chat", messages: [] }; S.chats.unshift(fresh); S.chat = fresh.id; }
+    }
+    save(); lastChatsRenderKey = ""; renderAll();
+  };
+  li.append(openBtn, pinBtn, archBtn, delBtn);
+  return li;
+}
+function renderSwarmTree(ul){
+  const allGroups = swarmGroups();
+  if (!allGroups.length) { ul.innerHTML = `<li class="none">No swarm runs yet. Try /swarm in chat.</li>`; return; }
   const q = chatQuery.trim().toLowerCase();
   const groups = q ? allGroups.filter(g => {
     const all = (g.lead ? [g.lead] : []).concat(g.bots);
@@ -2518,6 +2582,76 @@ let archivedChatsOpen = false;
   boardHdr.innerHTML = `<span>SWARM RUNS (${groups.length})</span><button type="button" class="btn" id="openSwarmBoardBtn" style="padding:2px 8px;font-size:10px" title="Open the unified Swarm Board">SWARM BOARD ↗</button>`;
   boardHdr.querySelector("#openSwarmBoardBtn").onclick = () => openBotLogs((chat() && chat().swarmRun) || "");
   frag.appendChild(boardHdr);
+  const appendSection = (label, list) => {
+    if (!list.length) return;
+    if (active.length && recent.length) frag.appendChild(makeGroupHdr(label, list.length));
+    list.forEach(g => {
+      const parent = g.lead || g.bots[0];
+      if (!parent) return;
+      const bots = g.lead ? g.bots : g.bots.slice(1);
+      const isLive = [parent, ...bots].some(c => c.swarmLive || c.swarmTaskStatus === "claimed");
+      const hasOpen = [parent, ...bots].some(c => c.id === S.chat);
+      const expanded = typeof parent.swarmOpen === "boolean" ? parent.swarmOpen : (isLive || hasOpen);
+      const health = swarmHealthState(parent, bots);
+      const pct = swarmProgressPct(parent, bots);
+      const li = document.createElement("li");
+      li.className = "swarm-run swarm-status-row" + (parent.id === S.chat ? " active" : "");
+      if (health) li.setAttribute("data-health", health);
+      li.style.setProperty("--swarm-progress", pct + "%");
+      const caret = document.createElement("button"); caret.type = "button"; caret.className = "caret";
+      caret.disabled = !bots.length;
+      caret.setAttribute("aria-expanded", String(!!(bots.length && expanded)));
+      caret.setAttribute("aria-label", expanded ? "Hide swarm bots" : "Show swarm bots");
+      caret.textContent = bots.length ? (expanded ? "▾" : "▸") : "·";
+      caret.onclick = e => { e.stopPropagation(); parent.swarmOpen = !expanded; save(); lastChatsRenderKey = ""; renderChats(); };
+      const openBtn = document.createElement("button"); openBtn.type = "button"; openBtn.className = "open";
+      const parts = swarmParts(parent);
+      openBtn.innerHTML = `${swarmChip(parent)}<span class="t">${esc(parts.goal || parent.title || "Swarm run")}</span>${bots.length ? `<span class="n">${bots.length}</span>` : ""}`;
+      openBtn.onclick = () => openChatRow(parent);
+      openBtn.onkeydown = e => {
+        if (!bots.length) return;
+        if (e.key === "ArrowRight" && !expanded) { e.preventDefault(); parent.swarmOpen = true; save(); lastChatsRenderKey = ""; renderChats(); }
+        if (e.key === "ArrowLeft" && expanded) { e.preventDefault(); parent.swarmOpen = false; save(); lastChatsRenderKey = ""; renderChats(); }
+      };
+      const delBtn = document.createElement("button"); delBtn.type = "button"; delBtn.className = "del";
+      delBtn.title = "Delete swarm run"; delBtn.setAttribute("aria-label", "Delete swarm run");
+      delBtn.textContent = "×";
+      delBtn.onclick = e => {
+        e.stopPropagation();
+        const runIds = new Set([parent, ...bots].map(x => x.id));
+        S.chats = S.chats.filter(x => !runIds.has(x.id));
+        if (runIds.has(S.chat)) {
+          const next = S.chats.find(x => x.botId === S.bot && !x.swarmRun) || S.chats[0];
+          if (next) { S.chat = next.id; S.bot = next.botId; }
+        }
+        save(); lastChatsRenderKey = ""; renderAll();
+      };
+      li.append(caret, openBtn, delBtn);
+      frag.appendChild(li);
+      if (bots.length && expanded) {
+        const subLi = document.createElement("li"); subLi.className = "swarm-steps";
+        const subUl = document.createElement("ul");
+        bots.forEach(bc => {
+          const bli = document.createElement("li");
+          const bHealth = swarmHealthState(bc);
+          bli.className = "swarm-status-row" + (bc.id === S.chat ? " active" : "");
+          if (bHealth) bli.setAttribute("data-health", bHealth);
+          bli.style.setProperty("--swarm-progress", swarmProgressPct(bc) + "%");
+          const bBtn = document.createElement("button"); bBtn.type = "button"; bBtn.className = "open";
+          const bp = swarmParts(bc);
+          bBtn.innerHTML = `${swarmChip(bc)}<span class="t">${esc(bp.task || bp.goal || bc.title || "Bot")}</span>`;
+          bBtn.onclick = () => openChatRow(bc);
+          bli.appendChild(bBtn);
+          subUl.appendChild(bli);
+        });
+        subLi.appendChild(subUl);
+        frag.appendChild(subLi);
+      }
+    });
+  };
+  appendSection("ACTIVE", active);
+  appendSection("RECENT", recent);
+  ul.replaceChildren(frag);
 }
 function renderChats(){
   renderSwarmBar();
@@ -2583,6 +2717,23 @@ function renderLog(preserveScroll=false){
     wrap.appendChild(btn); frag.appendChild(wrap);
   }
   logBatchFrag = frag;
+  renderingHistory = true;
+  try {
+    if (c.compact && c.compact.summary && startIdx > 0 && startIdx >= (c.compact.upto || 0)) {
+      addCompactMark(c);
+    }
+    for (let idx = startIdx; idx < total; idx++) {
+      if (c.compact && c.compact.summary && idx === (c.compact.upto || 0)) addCompactMark(c);
+      const m = c.messages[idx];
+      if (!m) continue;
+      if (m.swarmLog) { renderSwarmTimeline(c, m); continue; }
+      const atts = [
+        ...((m.images || []).filter(x => x && x.data)),
+        ...((m.attachments || []).map(x => typeof x === "string" ? { name: x } : x).filter(x => x && x.name && !x.data)),
+      ];
+      const el = addMsg(m.role, m.content, m.model, m.stats, m.reasoningSummary || m.thinking || "", atts, m.at, m);
+      addMsgActions(el, c, idx);
+    }
   } finally { renderingHistory = false; logBatchFrag = null; }
   if (liveGen && liveGen.chatId === c.id) frag.appendChild(liveGen.box);  // back in the chat that is still generating
   log.replaceChildren(frag);
